@@ -65,30 +65,39 @@ class _GalleryScreenState extends State<GalleryScreen> {
       // Continuar sin el permiso, se intentará leer desde el almacenamiento interno.
     }
 
-    final base = await storage.dcimBase();
-    _dcimBasePath = base?.path;
-
+    // Carga la lista de fotos una sola vez para mayor eficiencia.
     final photoEntries =
         await meta.listPhotos(widget.project, location: widget.location);
 
+    final base = await storage.dcimBase();
+    _dcimBasePath = base?.path;
+
     _resolvedFiles.clear();
     for (final pEntry in photoEntries) {
+      // Por defecto, se asume la ruta interna.
       final internalPath = p.join(storage.rootPath, pEntry.relativePath);
       File fileToShow = File(internalPath);
 
+      // Si no existe en la ruta interna, busca en la galería pública (DCIM).
       if (!fileToShow.existsSync() && _dcimBasePath != null) {
         final fileName = p.basename(pEntry.relativePath);
         final dcimPath = p.join(_dcimBasePath!, 'InspectW', widget.project,
             widget.location, fileName);
+
         final dcimFile = File(dcimPath);
         if (dcimFile.existsSync()) {
+          // Si se encuentra en DCIM, esa es la ruta a mostrar.
           fileToShow = dcimFile;
         }
       }
       _resolvedFiles[pEntry.id] = fileToShow;
     }
-    photos = await meta.listPhotos(widget.project, location: widget.location);
-    setState(() {});
+
+    // Asigna la lista de fotos cargada al estado.
+    photos = photoEntries;
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _editDescription(PhotoEntry p) async {
