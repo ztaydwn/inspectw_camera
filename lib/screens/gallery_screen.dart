@@ -1,5 +1,6 @@
 // lib/screens/gallery_screen.dart — v5.1 (fallback a DCIM si falta interno)
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
@@ -35,8 +36,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _load() async {
-    // Solicitar permiso de almacenamiento
-    final permStatus = await Permission.storage.request();
+    PermissionStatus permStatus;
+
+    // Manejo de permisos diferenciado para Android
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      // En Android 13 (API 33) o superior, se usan permisos granulares.
+      if (androidInfo.version.sdkInt >= 33) {
+        permStatus = await Permission.photos.request();
+      } else {
+        permStatus = await Permission.storage.request();
+      }
+    } else {
+      // Para iOS y otras plataformas, Permission.photos es el equivalente.
+      permStatus = await Permission.photos.request();
+    }
     if (!permStatus.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
