@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -171,8 +170,8 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<String?> _savePhotoToDcim(XFile xFile, String description) async {
     File? tempFile; // To hold the temporary file, if created
     try {
-      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'IMG_$ts.jpg';
+      // We no longer generate the filename ourselves. We will get it from the
+      // result of the saveFile operation.
       final relativePath = p.join(widget.project, widget.location);
 
       Uint8List bytes = await xFile.readAsBytes();
@@ -188,7 +187,8 @@ class _CameraScreenState extends State<CameraScreen> {
       String filePathToSave = xFile.path;
       if (a != null) {
         final tempDir = await getTemporaryDirectory();
-        tempFile = File(p.join(tempDir.path, fileName));
+        // Use the original file name for the temp cropped file
+        tempFile = File(p.join(tempDir.path, p.basename(xFile.path)));
         await tempFile.writeAsBytes(bytes, flush: true);
         filePathToSave = tempFile.path;
       }
@@ -204,7 +204,7 @@ class _CameraScreenState extends State<CameraScreen> {
           relativePath: relativePath,
         );
         debugPrint(
-            '[Camera] Saved to DCIM in path: $relativePath. Uri: ${saveInfo?.uri}, name: ${saveInfo?.name}, duplicated: ${saveInfo?.isDuplicated}');
+            '[Camera] Saved to DCIM in path: $relativePath. Result: $saveInfo');
       } else {
         // Handle non-Android platforms if necessary
         debugPrint('[Camera] Skipping DCIM save on non-Android platform.');
@@ -212,7 +212,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
       // If the file was not saved successfully, show an error and exit.
-      if (saveInfo == null) {
+      if (saveInfo == null || !saveInfo.isSuccessful) {
         debugPrint('[Camera] MediaStore.saveFile failed.');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -222,26 +222,26 @@ class _CameraScreenState extends State<CameraScreen> {
         return null;
       }
 
+      // CRITICAL FIX: Use the actual filename returned by the plugin.
+      final actualFileName = saveInfo.name;
+
       // Save metadata
       if (!mounted) return null;
 
-      // IMPORTANT: The relativePath for metadata MUST match how the file was
-      // saved by media_store. It creates a structure like:
-      // /storage/emulated/0/DCIM/InspectW/PROJECT/LOCATION/file.jpg
-      // The part we need to store is from "InspectW" onwards.
+      // The relative path for metadata should match the gallery path
       final metadataRelativePath =
-          p.join(MediaStore.appFolder, relativePath, fileName);
+          p.join(MediaStore.appFolder, relativePath, actualFileName);
 
       await context.read<MetadataService>().addPhoto(
             project: widget.project,
             location: widget.location,
-            fileName: fileName,
+            fileName: actualFileName, // Use the real file name
             relativePath: metadataRelativePath,
             description: description,
             takenAt: DateTime.now(),
           );
 
-      return fileName;
+      return actualFileName; // Return the real file name
     } catch (e) {
       debugPrint('[Camera] Error saving photo to DCIM: $e');
       if (mounted) {
