@@ -229,8 +229,7 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) return null;
 
       // The relative path for metadata should match the gallery path
-      final metadataRelativePath =
-          p.join(MediaStore.appFolder, relativePath, actualFileName);
+      final metadataRelativePath = p.join(relativePath, actualFileName);
 
       await context.read<MetadataService>().addPhoto(
             project: widget.project,
