@@ -1,4 +1,5 @@
 // lib/screens/project_screen.dart — v6.1 (fix zip type cast error)
+import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:flutter/material.dart';
@@ -61,72 +62,86 @@ class _ProjectScreenState extends State<ProjectScreen> {
   Future<String?> _buildZipForProject() async {
     setState(() => _isExporting = true);
     try {
-      // 1) Determine source directory and collect files
-      Directory? source;
-      List<File> files = [];
-      // 1. Buscar en internal (project folder)
-      final internalRoot =
-          Directory(p.join(storage.rootPath, 'projects', widget.project));
-
-      if (await internalRoot.exists()) {
-        final entities = await internalRoot.list(recursive: true).toList();
-        files = entities.whereType<File>().toList();
-        if (files.isNotEmpty) source = internalRoot;
-      }
-
-      if (source == null && Platform.isAndroid) {
-        final permStatus = await Permission.storage.request();
-        if (permStatus.isGranted) {
-          // 2. Buscar en DCIM (fotos)
-          final dcimProject = await storage.dcimProjectDir(widget.project);
-          if (dcimProject != null && await dcimProject.exists()) {
-            final entities = await dcimProject.list(recursive: true).toList();
-            files = entities
-                .whereType<File>()
-                .where((f) =>
-                    f.path.toLowerCase().endsWith('.jpg') ||
-                    f.path.toLowerCase().endsWith('.jpeg') ||
-                    f.path.toLowerCase().endsWith('.png'))
-                .toList();
-            if (files.isNotEmpty) {
-              source = dcimProject;
-              debugPrint(
-                  '[ZIP] Using DCIM: ${dcimProject.path} (files=${files.length})');
-            }
-          }
-        }
-      }
-
-      if (source == null || files.isEmpty) {
+      // 1) Get all photo metadata for the project
+      final allPhotos = await meta.listPhotos(widget.project);
+      if (allPhotos.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No photos found to export.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No photo metadata found for this project.')));
         }
         return null;
       }
 
-      // 2) Create the ZIP file
+      // 2) Find the corresponding files in DCIM and prepare for ZIP
+      final filesToZip = <ArchiveFile>[];
+      final descriptions = StringBuffer();
+      descriptions.writeln('Project: ${widget.project}');
+      descriptions.writeln(
+          'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
+      descriptions.writeln('---');
+
+      if (Platform.isAndroid) {
+        final permStatus = await Permission.storage.request();
+        if (!permStatus.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Storage permission denied.')));
+          }
+          return null;
+        }
+
+        for (final photo in allPhotos) {
+          final fileInDcim = await storage.dcimFile(
+              photo.project, photo.location, photo.fileName);
+          if (fileInDcim != null && await fileInDcim.exists()) {
+            final bytes = await fileInDcim.readAsBytes();
+            final archivePath = p.join(photo.location, photo.fileName);
+            filesToZip.add(ArchiveFile(archivePath, bytes.length, bytes));
+
+            // Add entry to descriptions file
+            descriptions.writeln('[${photo.location}] ${photo.fileName}');
+            descriptions.writeln('  Description: ${photo.description}');
+            descriptions.writeln(
+                '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+            descriptions.writeln();
+          }
+        }
+      }
+
+      if (filesToZip.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No photos found in DCIM gallery to export.')));
+        }
+        return null;
+      }
+
+      // Add descriptions file to the zip
+      final descBytes = utf8.encode(descriptions.toString());
+      filesToZip
+          .add(ArchiveFile('descriptions.txt', descBytes.length, descBytes));
+
+      // 3) Create the ZIP file
       final zipName =
           '${widget.project}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.zip';
       final zipPath = p.join(Directory.systemTemp.path, zipName);
       final encoder = ZipFileEncoder();
       encoder.create(zipPath);
 
-      for (final file in files) {
-        // FIX: Do not cast to File, addFile expects an ArchiveFile. This is already correct.
-        encoder.addFile(file); // Aquí `file` es del tipo `File`, y es correcto
+      for (final file in filesToZip) {
+        encoder.addArchiveFile(file);
       }
       encoder.close();
 
-      debugPrint(
-          '[ZIP] Source=${source.path} files=${files.length} -> $zipPath');
+      debugPrint('[ZIP] Created $zipPath with ${filesToZip.length} entries.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('ZIP created with ${files.length} file(s).')));
+            content:
+                Text('ZIP created with ${filesToZip.length - 1} photo(s).')));
       }
       return zipPath;
-    } catch (e) {
-      debugPrint('[ZIP] Error building ZIP: $e');
+    } catch (e, s) {
+      debugPrint('[ZIP] Error building ZIP: $e\n$s');
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Error creating ZIP: $e')));

@@ -82,7 +82,8 @@ class MetadataService {
     }
   }
 
-  Future<List<PhotoEntry>> listPhotos(String project, {String? location}) async {
+  Future<List<PhotoEntry>> listPhotos(String project,
+      {String? location}) async {
     await _load(project);
     final all = _cache[project]!;
     if (location == null) return all;
@@ -108,11 +109,13 @@ class MetadataService {
       takenAt: takenAt,
     );
     _cache[project]!.add(entry);
-    _suggestions[project]![description] = (_suggestions[project]![description] ?? 0) + 1;
+    _suggestions[project]![description] =
+        (_suggestions[project]![description] ?? 0) + 1;
     await _persist(project);
   }
 
-  Future<void> updateDescription(String project, String photoId, String desc) async {
+  Future<void> updateDescription(
+      String project, String photoId, String desc) async {
     await _load(project);
     final list = _cache[project]!;
     final idx = list.indexWhere((e) => e.id == photoId);
@@ -129,9 +132,11 @@ class MetadataService {
     final idx = list.indexWhere((e) => e.id == photoId);
     if (idx < 0) return;
     final entry = list[idx];
-    final file = File(p.join(_storage.rootPath, entry.relativePath));
+    // The photo is in DCIM, not in the app's private storage
+    final file =
+        await _storage.dcimFile(entry.project, entry.location, entry.fileName);
     try {
-      if (await file.exists()) {
+      if (file != null && await file.exists()) {
         await file.delete();
       }
     } catch (_) {}
@@ -150,9 +155,7 @@ class MetadataService {
     await _load(project);
     final map = _suggestions[project]!;
     final q = query.toLowerCase();
-    final filtered = map.keys
-        .where((k) => k.toLowerCase().contains(q))
-        .toList()
+    final filtered = map.keys.where((k) => k.toLowerCase().contains(q)).toList()
       ..sort((a, b) => (map[b]!).compareTo(map[a]!));
     return filtered.take(20).toList();
   }

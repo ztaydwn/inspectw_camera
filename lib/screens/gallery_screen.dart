@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
@@ -24,7 +23,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   late final StorageService storage;
   late final MetadataService meta;
   List<PhotoEntry> photos = [];
-  String? _dcimBasePath;
   final Map<String, File> _resolvedFiles = {};
 
   @override
@@ -62,35 +60,21 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ),
         ));
       }
-      // Continuar sin el permiso, se intentará leer desde el almacenamiento interno.
+      return; // No podemos continuar sin permisos
     }
 
     // Carga la lista de fotos una sola vez para mayor eficiencia.
     final photoEntries =
         await meta.listPhotos(widget.project, location: widget.location);
 
-    final base = await storage.dcimBase();
-    _dcimBasePath = base?.path;
-
     _resolvedFiles.clear();
     for (final pEntry in photoEntries) {
-      // Por defecto, se asume la ruta interna.
-      final internalPath = p.join(storage.rootPath, pEntry.relativePath);
-      File fileToShow = File(internalPath);
-
-      // Si no existe en la ruta interna, busca en la galería pública (DCIM).
-      if (!fileToShow.existsSync() && _dcimBasePath != null) {
-        final fileName = p.basename(pEntry.relativePath);
-        final dcimPath = p.join(_dcimBasePath!, 'InspectW', widget.project,
-            widget.location, fileName);
-
-        final dcimFile = File(dcimPath);
-        if (dcimFile.existsSync()) {
-          // Si se encuentra en DCIM, esa es la ruta a mostrar.
-          fileToShow = dcimFile;
-        }
+      // Las fotos ahora siempre están en DCIM
+      final file = await storage.dcimFile(
+          pEntry.project, pEntry.location, pEntry.fileName);
+      if (file != null) {
+        _resolvedFiles[pEntry.id] = file;
       }
-      _resolvedFiles[pEntry.id] = fileToShow;
     }
 
     // Asigna la lista de fotos cargada al estado.

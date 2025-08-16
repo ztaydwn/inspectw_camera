@@ -1,16 +1,17 @@
-// lib/screens/camera_screen.dart — v6 (refactor + error handling)
+// lib/screens/camera_screen.dart — v7 (refactor single save)
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:image/image.dart' as img;
 
-import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
 import '../widgets/description_input.dart';
 
@@ -39,12 +40,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _bootstrap();
-  }
-
-  Future<void> _bootstrap() async {
-    await StorageService().init();
-    await _initCam();
+    _initCam();
   }
 
   double? _aspectToDouble(AspectOpt a) {
@@ -131,15 +127,12 @@ class _CameraScreenState extends State<CameraScreen> {
       final desc = await _askForDescription();
       if (desc == null) return; // User cancelled
 
-      final savedFile = await _savePhoto(xFile, desc);
-      if (savedFile == null) return; // Save failed
-
-      // Post-processing in background
-      _processPhoto(savedFile);
+      final fileName = await _savePhotoToDcim(xFile, desc);
+      if (fileName == null) return; // Save failed
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Foto guardada: ${p.basename(savedFile.path)}')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Foto guardada: $fileName')));
       }
     } on CameraException catch (e) {
       if (mounted) {
@@ -167,55 +160,82 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Future<File?> _savePhoto(XFile xFile, String description) async {
+  Future<String?> _savePhotoToDcim(XFile xFile, String description) async {
+    File? tempFile; // To hold the temporary file, if created
     try {
-      final storage = StorageService();
-      await storage.ensureLocation(widget.project, widget.location);
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'IMG_$ts.jpg';
-      final relPath =
-          p.join('projects', widget.project, widget.location, fileName);
-      final dest = File(p.join(storage.rootPath, relPath));
+      final relativePath = p.join('InspectW', widget.project, widget.location);
 
-      await xFile.saveTo(dest.path);
+      Uint8List bytes = await xFile.readAsBytes();
+
+      // Crop if needed
+      final a = _aspectToDouble(aspect);
+      if (a != null) {
+        bytes = await _cropToAspect(bytes, a);
+      }
+
+      // MediaStore.saveFile needs a path, so if we cropped, we must
+      // write the modified bytes to a new temporary file.
+      String filePathToSave = xFile.path;
+      if (a != null) {
+        final tempDir = await getTemporaryDirectory();
+        tempFile = File(p.join(tempDir.path, fileName));
+        await tempFile.writeAsBytes(bytes, flush: true);
+        filePathToSave = tempFile.path;
+      }
+
+      // Save to Gallery
+      if (Platform.isAndroid) {
+        final mediaStore = MediaStore();
+        await mediaStore.saveFile(
+          tempFilePath: filePathToSave,
+          dirType: DirType.photo,
+          dirName: DirName.dcim,
+          relativePath: relativePath,
+        );
+        debugPrint('[Camera] Saved to DCIM in path: $relativePath');
+      } else {
+        // Handle non-Android platforms if necessary
+        debugPrint('[Camera] Skipping DCIM save on non-Android platform.');
+      }
+
+      // Save metadata
       if (!mounted) return null;
       await context.read<MetadataService>().addPhoto(
             project: widget.project,
             location: widget.location,
             fileName: fileName,
-            relativePath: relPath,
+            // The relative path for metadata should match the gallery path
+            relativePath: p.join(relativePath, fileName),
             description: description,
             takenAt: DateTime.now(),
           );
-      return dest;
+
+      return fileName;
     } catch (e) {
-      debugPrint('[Camera] Error saving photo: $e');
+      debugPrint('[Camera] Error saving photo to DCIM: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error al guardar la foto: $e')));
       }
       return null;
+    } finally {
+      // Clean up the temporary file if it was created
+      if (tempFile != null) {
+        try {
+          await tempFile.delete();
+        } catch (e) {
+          debugPrint('[Camera] Error deleting temp file: $e');
+        }
+      }
     }
   }
 
-  void _processPhoto(File photoFile) {
-    Future(() async {
-      final a = _aspectToDouble(aspect);
-      try {
-        if (a != null) await _cropToAspect(photoFile, a);
-        await _mirrorToDCIM(photoFile.path);
-      } catch (e) {
-        debugPrint('[Camera] Post-processing error: $e');
-        // Optionally, show a non-intrusive notification to the user
-      }
-    });
-  }
-
-  Future<File> _cropToAspect(File src, double aspect) async {
+  Future<Uint8List> _cropToAspect(Uint8List bytes, double aspect) async {
     try {
-      final bytes = await src.readAsBytes();
       final i = img.decodeImage(bytes);
-      if (i == null) return src;
+      if (i == null) return bytes;
       final w = i.width, h = i.height;
       final cur = w / h;
       int cw = w, ch = h, x = 0, y = 0;
@@ -226,35 +246,12 @@ class _CameraScreenState extends State<CameraScreen> {
         ch = (w / aspect).round();
         y = ((h - ch) / 2).round();
       }
-      final out = img.encodeJpg(
+      return Uint8List.fromList(img.encodeJpg(
           img.copyCrop(i, x: x, y: y, width: cw, height: ch),
-          quality: 92);
-      await src.writeAsBytes(out, flush: true);
+          quality: 92));
     } catch (e) {
       debugPrint('[Camera] crop error: $e');
-    }
-    return src;
-  }
-
-  Future<void> _mirrorToDCIM(String localPath) async {
-    if (!Platform.isAndroid) return;
-    try {
-      await MediaStore.ensureInitialized();
-
-      // Se incluye 'InspectW' directamente en la ruta relativa porque
-      // la propiedad appFolder del plugin parece ser ignorada.
-      final String finalRelativePath =
-          'InspectW/${widget.project}/${widget.location}';
-
-      await MediaStore().saveFile(
-        tempFilePath: localPath,
-        dirType: DirType.photo,
-        dirName: DirName.dcim,
-        relativePath: finalRelativePath,
-      );
-      debugPrint('[Camera] Mirrored to DCIM at path: $finalRelativePath');
-    } catch (e) {
-      debugPrint('[Camera] mirror error: $e');
+      return bytes; // Return original bytes on error
     }
   }
 
