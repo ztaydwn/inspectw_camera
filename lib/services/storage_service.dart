@@ -1,4 +1,4 @@
-// lib/services/storage_service.dart — v5.1 (DCIM helpers)
+// lib/services/storage_service.dart — v5.2 (DCIM helpers fixed)
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -56,26 +56,23 @@ class StorageService {
   /// No pide permisos aquí; pídelo en la UI (READ_MEDIA_IMAGES o READ_EXTERNAL_STORAGE).
   Future<Directory?> dcimBase() async {
     if (!Platform.isAndroid) return null;
-
-    try {
-      // Vía oficial de path_provider
-      final list =
-          await getExternalStorageDirectories(type: StorageDirectory.dcim);
-      if (list != null && list.isNotEmpty) {
-        return list.first;
-      }
-    } catch (_) {
-      // continúa al fallback
-      // Fallback común (puede variar según el OEM)
-      final guess = Directory('/storage/emulated/0/DCIM');
-      if (await guess.exists()) return guess;
-
-      // Otro fallback posible
-      final legacy = Directory('/sdcard/DCIM');
-      if (await legacy.exists()) return legacy;
-
-      return null;
+    // La forma más consistente de acceder a la carpeta pública DCIM es usando
+    // su ruta estándar. Los métodos de path_provider tienden a devolver
+    // directorios específicos de la app (dentro de /Android/data), que no
+    // es lo que queremos para una galería pública.
+    final publicDcim = Directory('/storage/emulated/0/DCIM');
+    if (await publicDcim.exists()) {
+      return publicDcim;
     }
+
+    // Un fallback común en dispositivos más antiguos.
+    final legacyPublicDcim = Directory('/sdcard/DCIM');
+    if (await legacyPublicDcim.exists()) {
+      return legacyPublicDcim;
+    }
+
+    // Si ninguna de las rutas públicas existe, es posible que el almacenamiento
+    // no esté disponible o la estructura sea no estándar. Devolvemos null.
     return null;
   }
 

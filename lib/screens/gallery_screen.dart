@@ -34,6 +34,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _load() async {
+    // Primero, inicializamos el servicio de almacenamiento para asegurar que las
+    // rutas a los archivos se puedan resolver correctamente.
+    await storage.init();
+
     PermissionStatus permStatus;
 
     // Manejo de permisos diferenciado para Android
@@ -72,7 +76,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
       // Las fotos ahora siempre están en DCIM
       final file = await storage.dcimFile(
           pEntry.project, pEntry.location, pEntry.fileName);
-      if (file != null) {
+      // Nos aseguramos de que el archivo no sea nulo y que realmente exista
+      // antes de agregarlo a la lista de archivos a mostrar.
+      if (file != null && await file.exists()) {
         _resolvedFiles[pEntry.id] = file;
       }
     }

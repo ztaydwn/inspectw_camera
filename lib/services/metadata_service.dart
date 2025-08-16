@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models.dart';
@@ -146,7 +147,9 @@ class MetadataService {
 
   Future<void> _persist(String project) async {
     final f = _storage.metadataFile(project);
-    await f.writeAsString(jsonEncode(_cache[project]!), flush: true);
+    final content = jsonEncode(_cache[project]!);
+    debugPrint('Persisting metadata to ${f.path}: $content');
+    await f.writeAsString(content, flush: true);
     final s = _storage.descriptionsFile(project);
     await s.writeAsString(jsonEncode(_suggestions[project]), flush: true);
   }
