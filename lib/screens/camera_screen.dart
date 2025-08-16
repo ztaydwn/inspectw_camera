@@ -193,29 +193,50 @@ class _CameraScreenState extends State<CameraScreen> {
         filePathToSave = tempFile.path;
       }
 
+      SaveInfo? saveInfo;
       // Save to Gallery
       if (Platform.isAndroid) {
         final mediaStore = MediaStore();
-        await mediaStore.saveFile(
+        saveInfo = await mediaStore.saveFile(
           tempFilePath: filePathToSave,
           dirType: DirType.photo,
           dirName: DirName.dcim,
           relativePath: relativePath,
         );
-        debugPrint('[Camera] Saved to DCIM in path: $relativePath');
+        debugPrint(
+            '[Camera] Saved to DCIM in path: $relativePath. Uri: ${saveInfo?.uri}, name: ${saveInfo?.name}, duplicated: ${saveInfo?.isDuplicated}');
       } else {
         // Handle non-Android platforms if necessary
         debugPrint('[Camera] Skipping DCIM save on non-Android platform.');
+        return null;
+      }
+
+      // If the file was not saved successfully, show an error and exit.
+      if (saveInfo == null) {
+        debugPrint('[Camera] MediaStore.saveFile failed.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content:
+                  Text('Error: No se pudo guardar la foto en la galería.')));
+        }
+        return null;
       }
 
       // Save metadata
       if (!mounted) return null;
+
+      // IMPORTANT: The relativePath for metadata MUST match how the file was
+      // saved by media_store. It creates a structure like:
+      // /storage/emulated/0/DCIM/InspectW/PROJECT/LOCATION/file.jpg
+      // The part we need to store is from "InspectW" onwards.
+      final metadataRelativePath =
+          p.join(MediaStore.appFolder, relativePath, fileName);
+
       await context.read<MetadataService>().addPhoto(
             project: widget.project,
             location: widget.location,
             fileName: fileName,
-            // The relative path for metadata should match the gallery path
-            relativePath: p.join(MediaStore.appFolder, relativePath, fileName),
+            relativePath: metadataRelativePath,
             description: description,
             takenAt: DateTime.now(),
           );

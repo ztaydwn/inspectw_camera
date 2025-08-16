@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/storage_service.dart';
@@ -71,15 +72,26 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final photoEntries =
         await meta.listPhotos(widget.project, location: widget.location);
 
+    final dcimDir = await storage.dcimBase();
+    if (dcimDir == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'No se pudo encontrar el directorio DCIM para leer las fotos.'),
+        ));
+      }
+      return;
+    }
+
     _resolvedFiles.clear();
     for (final pEntry in photoEntries) {
-      // Las fotos ahora siempre están en DCIM
-      final file = await storage.dcimFile(
-          pEntry.project, pEntry.location, pEntry.fileName);
-      // Nos aseguramos de que el archivo no sea nulo y que realmente exista
-      // antes de agregarlo a la lista de archivos a mostrar.
-      if (file != null && await file.exists()) {
+      // La ruta relativa guardada en los metadatos es la fuente de verdad.
+      final file = File(path.join(dcimDir.path, pEntry.relativePath));
+
+      if (await file.exists()) {
         _resolvedFiles[pEntry.id] = file;
+      } else {
+        debugPrint('File not found at expected path: ${file.path}');
       }
     }
 
