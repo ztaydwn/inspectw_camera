@@ -79,17 +79,17 @@ class StorageService {
   Future<Directory?> dcimProjectDir(String project) async {
     final base = await dcimBase();
     if (base == null) return null;
-    return Directory(p.join(base.path, 'InspectW', project));
+    return Directory(p.join(base.path, project));
   }
 
-  /// (Opcional) /DCIM/InspectW/<project>/<location>
+  /// (Opcional) /DCIM/<project>/<location>
   Future<Directory?> dcimLocationDir(String project, String location) async {
     final prj = await dcimProjectDir(project);
     if (prj == null) return null;
     return Directory(p.join(prj.path, location));
   }
 
-  /// (Opcional) /DCIM/InspectW/<project>/<location>/<fileName>
+  /// (Opcional) /DCIM/<project>/<location>/<fileName>
   Future<File?> dcimFile(
       String project, String location, String fileName) async {
     final loc = await dcimLocationDir(project, location);
