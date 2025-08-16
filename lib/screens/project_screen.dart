@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive_io.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
@@ -36,7 +37,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   Future<void> _addLocation() async {
     final c = TextEditingController();
-    final name = await showDialog<String?>(
+    final name = await showDialog<String?>( 
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nueva ubicación'),
@@ -81,7 +82,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
       descriptions.writeln('---');
 
       if (Platform.isAndroid) {
-        final permStatus = await Permission.storage.request();
+        PermissionStatus permStatus;
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        if (androidInfo.version.sdkInt >= 33) {
+          permStatus = await Permission.photos.request();
+        } else {
+          permStatus = await Permission.storage.request();
+        }
+
         if (!permStatus.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -93,6 +101,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
         for (final photo in allPhotos) {
           final fileInDcim = await storage.dcimFile(
               photo.project, photo.location, photo.fileName);
+          debugPrint('Looking for file: ${fileInDcim?.path}');
           if (fileInDcim != null && await fileInDcim.exists()) {
             final bytes = await fileInDcim.readAsBytes();
             final archivePath = p.join(photo.location, photo.fileName);

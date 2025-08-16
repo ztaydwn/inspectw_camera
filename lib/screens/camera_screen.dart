@@ -40,7 +40,15 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _initCam();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    if (Platform.isAndroid) {
+      await MediaStore.ensureInitialized();
+      MediaStore.appFolder = 'InspectW';
+    }
+    await _initCam();
   }
 
   double? _aspectToDouble(AspectOpt a) {
@@ -165,7 +173,7 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'IMG_$ts.jpg';
-      final relativePath = p.join('InspectW', widget.project, widget.location);
+      final relativePath = p.join(widget.project, widget.location);
 
       Uint8List bytes = await xFile.readAsBytes();
 
@@ -207,7 +215,7 @@ class _CameraScreenState extends State<CameraScreen> {
             location: widget.location,
             fileName: fileName,
             // The relative path for metadata should match the gallery path
-            relativePath: p.join(relativePath, fileName),
+            relativePath: p.join(MediaStore.appFolder, relativePath, fileName),
             description: description,
             takenAt: DateTime.now(),
           );
