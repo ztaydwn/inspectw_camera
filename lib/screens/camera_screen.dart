@@ -240,14 +240,19 @@ class _CameraScreenState extends State<CameraScreen> {
     if (!Platform.isAndroid) return;
     try {
       await MediaStore.ensureInitialized();
-      MediaStore.appFolder = 'InspectW';
+
+      // Se incluye 'InspectW' directamente en la ruta relativa porque
+      // la propiedad appFolder del plugin parece ser ignorada.
+      final String finalRelativePath =
+          'InspectW/${widget.project}/${widget.location}';
+
       await MediaStore().saveFile(
         tempFilePath: localPath,
         dirType: DirType.photo,
         dirName: DirName.dcim,
-        relativePath: '${widget.project}/${widget.location}',
+        relativePath: finalRelativePath,
       );
-      debugPrint('[Camera] Mirrored to DCIM');
+      debugPrint('[Camera] Mirrored to DCIM at path: $finalRelativePath');
     } catch (e) {
       debugPrint('[Camera] mirror error: $e');
     }
