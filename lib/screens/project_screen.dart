@@ -37,7 +37,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   Future<void> _addLocation() async {
     final c = TextEditingController();
-    final name = await showDialog<String?>( 
+    final name = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nueva ubicación'),
@@ -186,7 +186,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
       }
     } finally {
       try {
-        await File(zipPath).delete();
+        final tmpZip = File(zipPath);
+        if (await tmpZip.exists()) {
+          await tmpZip.delete();
+        } else {
+          debugPrint('[ZIP] Temp not found (already moved/cleaned): $zipPath');
+        }
       } catch (e) {
         debugPrint('[ZIP] Failed to delete temp file: $e');
       }
