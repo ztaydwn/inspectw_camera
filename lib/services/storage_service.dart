@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-import '../constants.dart';
-
 class StorageService {
   static final StorageService _i = StorageService._();
   StorageService._();

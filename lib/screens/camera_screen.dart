@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
@@ -64,8 +65,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCam() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted) {
+    // Request camera permission
+    final cameraStatus = await Permission.camera.request();
+    if (!cameraStatus.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Permiso de cámara denegado.'),
@@ -76,6 +78,30 @@ class _CameraScreenState extends State<CameraScreen> {
         ));
       }
       return;
+    }
+
+    // Request storage permission
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      PermissionStatus storageStatus;
+      if (androidInfo.version.sdkInt >= 33) {
+        storageStatus = await Permission.photos.request();
+      } else {
+        storageStatus = await Permission.storage.request();
+      }
+
+      if (!storageStatus.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Permiso de almacenamiento denegado.'),
+            action: SnackBarAction(
+              label: 'Abrir ajustes',
+              onPressed: openAppSettings,
+            ),
+          ));
+        }
+        return;
+      }
     }
 
     try {
