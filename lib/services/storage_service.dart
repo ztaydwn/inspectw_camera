@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import '../constants.dart';
+
 class StorageService {
   static final StorageService _i = StorageService._();
   StorageService._();
@@ -76,24 +78,10 @@ class StorageService {
     return null;
   }
 
-  Future<Directory?> dcimProjectDir(String project) async {
+  /// Devuelve el archivo en DCIM a partir de la ruta relativa guardada en metadatos.
+  Future<File?> dcimFileFromRelativePath(String relativePath) async {
     final base = await dcimBase();
     if (base == null) return null;
-    return Directory(p.join(base.path, project));
-  }
-
-  /// (Opcional) /DCIM/<project>/<location>
-  Future<Directory?> dcimLocationDir(String project, String location) async {
-    final prj = await dcimProjectDir(project);
-    if (prj == null) return null;
-    return Directory(p.join(prj.path, location));
-  }
-
-  /// (Opcional) /DCIM/<project>/<location>/<fileName>
-  Future<File?> dcimFile(
-      String project, String location, String fileName) async {
-    final loc = await dcimLocationDir(project, location);
-    if (loc == null) return null;
-    return File(p.join(loc.path, fileName));
+    return File(p.join(base.path, relativePath));
   }
 }

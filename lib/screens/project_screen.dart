@@ -13,6 +13,7 @@ import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
 import 'gallery_screen.dart';
 import 'camera_screen.dart';
+import '../constants.dart';
 
 class ProjectScreen extends StatefulWidget {
   final String project;
@@ -103,10 +104,20 @@ class _ProjectScreenState extends State<ProjectScreen> {
         }
       }
 
+      final dcimDir = await storage.dcimBase();
+      if (dcimDir == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not access DCIM directory.')));
+        }
+        return null;
+      }
+
       final params = CreateZipParams(
         photos: allPhotos,
         project: widget.project,
         descriptions: descriptions.toString(),
+        dcimPath: dcimDir.path,
       );
 
       final zipPath = await compute(createZipIsolate, params);
@@ -143,16 +154,16 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
     try {
       await MediaStore.ensureInitialized();
-      MediaStore.appFolder = 'InspectW';
+      MediaStore.appFolder = kAppFolder;
       await MediaStore().saveFile(
         tempFilePath: zipPath,
         dirType: DirType.download,
         dirName: DirName.download,
-        relativePath: 'InspectW/${widget.project}',
+        relativePath: '$kAppFolder/${widget.project}',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ZIP saved to Downloads/InspectW')));
+            const SnackBar(content: Text('ZIP saved to Downloads/$kAppFolder')));
       }
     } catch (e) {
       debugPrint('[ZIP] Error saving to MediaStore: $e');

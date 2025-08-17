@@ -9,6 +9,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../constants.dart';
 import '../models.dart';
 
 // Helper class to pass arguments to the photo saving isolate
@@ -19,7 +20,6 @@ class SavePhotoParams {
   final String location;
   final double? aspect;
   final RootIsolateToken token;
-  final String appFolder;
 
   SavePhotoParams({
     required this.xFile,
@@ -27,7 +27,6 @@ class SavePhotoParams {
     required this.project,
     required this.location,
     required this.token,
-    required this.appFolder,
     this.aspect,
   });
 }
@@ -48,11 +47,11 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
   // Initialize MediaStore within the isolate.
   if (Platform.isAndroid) {
     await MediaStore.ensureInitialized();
-    MediaStore.appFolder = params.appFolder;
+    MediaStore.appFolder = kAppFolder;
   }
   File? tempFile;
   try {
-    final relativePath = p.join(params.project, params.location);
+    final relativePathForPlugin = p.join(params.project, params.location);
     Uint8List bytes = await params.xFile.readAsBytes();
 
     if (params.aspect != null) {
@@ -89,11 +88,12 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
         tempFilePath: filePathToSave,
         dirType: DirType.photo,
         dirName: DirName.dcim,
-        relativePath: relativePath,
+        relativePath: relativePathForPlugin,
       );
 
       if (saveInfo != null && saveInfo.isSuccessful) {
-        final metadataRelativePath = p.join(relativePath, saveInfo.name);
+        final metadataRelativePath =
+            p.join(kAppFolder, relativePathForPlugin, saveInfo.name);
         return SavePhotoResult(
             fileName: saveInfo.name, relativePath: metadataRelativePath);
       }
@@ -113,11 +113,13 @@ class CreateZipParams {
   final List<PhotoEntry> photos;
   final String project;
   final String descriptions;
+  final String dcimPath;
 
   CreateZipParams(
       {required this.photos,
       required this.project,
-      required this.descriptions});
+      required this.descriptions,
+      required this.dcimPath});
 }
 
 /// ISOLATE: Creates a zip file from photos.
@@ -128,7 +130,7 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   final encoder = ZipFileEncoder();
   encoder.create(zipPath);
 
-  final dcimBase = Directory('/storage/emulated/0/DCIM');
+  final dcimBase = Directory(params.dcimPath);
 
   for (final photo in params.photos) {
     // Construct the file path manually to avoid async calls in the loop

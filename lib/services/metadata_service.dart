@@ -146,8 +146,8 @@ class MetadataService {
     final idx = list.indexWhere((e) => e.id == photoId);
     if (idx < 0) return;
     final entry = list[idx];
-    final file =
-        await _storage.dcimFile(entry.project, entry.location, entry.fileName);
+    // The photo is in DCIM, not in the app's private storage
+    final file = await _storage.dcimFileFromRelativePath(entry.relativePath);
     try {
       if (file != null && await file.exists()) {
         await file.delete();

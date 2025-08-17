@@ -12,6 +12,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
 import '../widgets/description_input.dart';
+import '../constants.dart';
 
 enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
 
@@ -44,7 +45,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _bootstrap() async {
     if (Platform.isAndroid) {
       await MediaStore.ensureInitialized();
-      MediaStore.appFolder = 'InspectW';
+      MediaStore.appFolder = kAppFolder;
     }
     await _initCam();
   }
@@ -176,7 +177,6 @@ class _CameraScreenState extends State<CameraScreen> {
         location: widget.location,
         aspect: _aspectToDouble(aspect),
         token: token,
-        appFolder: MediaStore.appFolder, // Pass the app folder
       );
 
       // Execute processing in a separate isolate
