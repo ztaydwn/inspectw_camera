@@ -1,15 +1,14 @@
-// lib/screens/project_screen.dart — v6.1 (fix zip type cast error)
-import 'dart:convert';
+// lib/screens/project_screen.dart — v7 (performance refactor)
 import 'dart:io';
-import 'package:archive/archive_io.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../services/isolate_helpers.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
 import 'gallery_screen.dart';
@@ -63,7 +62,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
   Future<String?> _buildZipForProject() async {
     setState(() => _isExporting = true);
     try {
-      // 1) Get all photo metadata for the project
       final allPhotos = await meta.listPhotos(widget.project);
       if (allPhotos.isEmpty) {
         if (mounted) {
@@ -73,13 +71,19 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      // 2) Find the corresponding files in DCIM and prepare for ZIP
-      final filesToZip = <ArchiveFile>[];
       final descriptions = StringBuffer();
       descriptions.writeln('Project: ${widget.project}');
       descriptions.writeln(
           'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
       descriptions.writeln('---');
+
+      for (final photo in allPhotos) {
+        descriptions.writeln('[${photo.location}] ${photo.fileName}');
+        descriptions.writeln('  Description: ${photo.description}');
+        descriptions.writeln(
+            '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+        descriptions.writeln();
+      }
 
       if (Platform.isAndroid) {
         PermissionStatus permStatus;
@@ -97,56 +101,28 @@ class _ProjectScreenState extends State<ProjectScreen> {
           }
           return null;
         }
-
-        for (final photo in allPhotos) {
-          final fileInDcim = await storage.dcimFile(
-              photo.project, photo.location, photo.fileName);
-          debugPrint('Looking for file: ${fileInDcim?.path}');
-          if (fileInDcim != null && await fileInDcim.exists()) {
-            final bytes = await fileInDcim.readAsBytes();
-            final archivePath = p.join(photo.location, photo.fileName);
-            filesToZip.add(ArchiveFile(archivePath, bytes.length, bytes));
-
-            // Add entry to descriptions file
-            descriptions.writeln('[${photo.location}] ${photo.fileName}');
-            descriptions.writeln('  Description: ${photo.description}');
-            descriptions.writeln(
-                '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
-            descriptions.writeln();
-          }
-        }
       }
 
-      if (filesToZip.isEmpty) {
+      final params = CreateZipParams(
+        photos: allPhotos,
+        project: widget.project,
+        descriptions: descriptions.toString(),
+      );
+
+      final zipPath = await compute(createZipIsolate, params);
+
+      if (zipPath == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('No photos found in DCIM gallery to export.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to create ZIP file.')));
         }
         return null;
       }
 
-      // Add descriptions file to the zip
-      final descBytes = utf8.encode(descriptions.toString());
-      filesToZip
-          .add(ArchiveFile('descriptions.txt', descBytes.length, descBytes));
-
-      // 3) Create the ZIP file
-      final zipName =
-          '${widget.project}_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.zip';
-      final zipPath = p.join(Directory.systemTemp.path, zipName);
-      final encoder = ZipFileEncoder();
-      encoder.create(zipPath);
-
-      for (final file in filesToZip) {
-        encoder.addArchiveFile(file);
-      }
-      encoder.close();
-
-      debugPrint('[ZIP] Created $zipPath with ${filesToZip.length} entries.');
+      debugPrint('[ZIP] Created $zipPath with ${allPhotos.length} entries.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:
-                Text('ZIP created with ${filesToZip.length - 1} photo(s).')));
+            content: Text('ZIP created with ${allPhotos.length} photo(s).')));
       }
       return zipPath;
     } catch (e, s) {

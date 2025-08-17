@@ -1,16 +1,14 @@
-// lib/screens/camera_screen.dart — v7 (refactor single save)
+// lib/screens/camera_screen.dart — v8 (performance refactor)
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
-import 'package:image/image.dart' as img;
 
+import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
 import '../widgets/description_input.dart';
 
@@ -134,12 +132,12 @@ class _CameraScreenState extends State<CameraScreen> {
       final desc = await _askForDescription();
       if (desc == null) return; // User cancelled
 
-      final fileName = await _savePhotoToDcim(xFile, desc);
-      if (fileName == null) return; // Save failed
+      final result = await _savePhoto(xFile, desc);
+      if (result == null) return; // Save failed
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Foto guardada: $fileName')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Foto guardada: ${result.fileName}')));
       }
     } on CameraException catch (e) {
       if (mounted) {
@@ -167,53 +165,20 @@ class _CameraScreenState extends State<CameraScreen> {
     );
   }
 
-  Future<String?> _savePhotoToDcim(XFile xFile, String description) async {
-    File? tempFile; // To hold the temporary file, if created
+  Future<SavePhotoResult?> _savePhoto(XFile xFile, String description) async {
     try {
-      // We no longer generate the filename ourselves. We will get it from the
-      // result of the saveFile operation.
-      final relativePath = p.join(widget.project, widget.location);
+      final params = SavePhotoParams(
+        xFile: xFile,
+        description: description,
+        project: widget.project,
+        location: widget.location,
+        aspect: _aspectToDouble(aspect),
+      );
 
-      Uint8List bytes = await xFile.readAsBytes();
+      // Execute processing in a separate isolate
+      final result = await compute(savePhotoIsolate, params);
 
-      // Crop if needed
-      final a = _aspectToDouble(aspect);
-      if (a != null) {
-        bytes = await _cropToAspect(bytes, a);
-      }
-
-      // MediaStore.saveFile needs a path, so if we cropped, we must
-      // write the modified bytes to a new temporary file.
-      String filePathToSave = xFile.path;
-      if (a != null) {
-        final tempDir = await getTemporaryDirectory();
-        // Use the original file name for the temp cropped file
-        tempFile = File(p.join(tempDir.path, p.basename(xFile.path)));
-        await tempFile.writeAsBytes(bytes, flush: true);
-        filePathToSave = tempFile.path;
-      }
-
-      SaveInfo? saveInfo;
-      // Save to Gallery
-      if (Platform.isAndroid) {
-        final mediaStore = MediaStore();
-        saveInfo = await mediaStore.saveFile(
-          tempFilePath: filePathToSave,
-          dirType: DirType.photo,
-          dirName: DirName.dcim,
-          relativePath: relativePath,
-        );
-        debugPrint(
-            '[Camera] Saved to DCIM in path: $relativePath. Result: $saveInfo');
-      } else {
-        // Handle non-Android platforms if necessary
-        debugPrint('[Camera] Skipping DCIM save on non-Android platform.');
-        return null;
-      }
-
-      // If the file was not saved successfully, show an error and exit.
-      if (saveInfo == null || !saveInfo.isSuccessful) {
-        debugPrint('[Camera] MediaStore.saveFile failed.');
+      if (result == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content:
@@ -222,64 +187,25 @@ class _CameraScreenState extends State<CameraScreen> {
         return null;
       }
 
-      // CRITICAL FIX: Use the actual filename returned by the plugin.
-      final actualFileName = saveInfo.name;
-
-      // Save metadata
+      // Save metadata on the main thread
       if (!mounted) return null;
-
-      // The relative path for metadata should match the gallery path
-      final metadataRelativePath = p.join(relativePath, actualFileName);
-
       await context.read<MetadataService>().addPhoto(
             project: widget.project,
             location: widget.location,
-            fileName: actualFileName, // Use the real file name
-            relativePath: metadataRelativePath,
+            fileName: result.fileName,
+            relativePath: result.relativePath,
             description: description,
             takenAt: DateTime.now(),
           );
 
-      return actualFileName; // Return the real file name
+      return result;
     } catch (e) {
-      debugPrint('[Camera] Error saving photo to DCIM: $e');
+      debugPrint('[Camera] Error saving photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error al guardar la foto: $e')));
       }
       return null;
-    } finally {
-      // Clean up the temporary file if it was created
-      if (tempFile != null) {
-        try {
-          await tempFile.delete();
-        } catch (e) {
-          debugPrint('[Camera] Error deleting temp file: $e');
-        }
-      }
-    }
-  }
-
-  Future<Uint8List> _cropToAspect(Uint8List bytes, double aspect) async {
-    try {
-      final i = img.decodeImage(bytes);
-      if (i == null) return bytes;
-      final w = i.width, h = i.height;
-      final cur = w / h;
-      int cw = w, ch = h, x = 0, y = 0;
-      if (cur > aspect) {
-        cw = (h * aspect).round();
-        x = ((w - cw) / 2).round();
-      } else if (cur < aspect) {
-        ch = (w / aspect).round();
-        y = ((h - ch) / 2).round();
-      }
-      return Uint8List.fromList(img.encodeJpg(
-          img.copyCrop(i, x: x, y: y, width: cw, height: ch),
-          quality: 92));
-    } catch (e) {
-      debugPrint('[Camera] crop error: $e');
-      return bytes; // Return original bytes on error
     }
   }
 

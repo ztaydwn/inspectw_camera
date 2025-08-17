@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models.dart';
+import 'isolate_helpers.dart';
 import 'storage_service.dart';
 
 class MetadataService {
@@ -67,17 +68,29 @@ class MetadataService {
 
   Future<void> _load(String project) async {
     if (_cache.containsKey(project)) return;
+
     final f = _storage.metadataFile(project);
     if (await f.exists()) {
-      final data = jsonDecode(await f.readAsString()) as List;
-      _cache[project] = data.map((e) => PhotoEntry.fromJson(e)).toList();
+      final content = await f.readAsString();
+      if (content.isNotEmpty) {
+        final data = await compute(jsonDecode, content) as List;
+        _cache[project] = data.map((e) => PhotoEntry.fromJson(e)).toList();
+      } else {
+        _cache[project] = [];
+      }
     } else {
       _cache[project] = [];
     }
+
     final s = _storage.descriptionsFile(project);
     if (await s.exists()) {
-      final data = jsonDecode(await s.readAsString()) as Map<String, dynamic>;
-      _suggestions[project] = data.map((k, v) => MapEntry(k, v as int));
+      final content = await s.readAsString();
+      if (content.isNotEmpty) {
+        final data = await compute(jsonDecode, content) as Map<String, dynamic>;
+        _suggestions[project] = data.map((k, v) => MapEntry(k, v as int));
+      } else {
+        _suggestions[project] = {};
+      }
     } else {
       _suggestions[project] = {};
     }
@@ -133,7 +146,6 @@ class MetadataService {
     final idx = list.indexWhere((e) => e.id == photoId);
     if (idx < 0) return;
     final entry = list[idx];
-    // The photo is in DCIM, not in the app's private storage
     final file =
         await _storage.dcimFile(entry.project, entry.location, entry.fileName);
     try {
@@ -147,11 +159,16 @@ class MetadataService {
 
   Future<void> _persist(String project) async {
     final f = _storage.metadataFile(project);
-    final content = jsonEncode(_cache[project]!);
-    debugPrint('Persisting metadata to ${f.path}: $content');
-    await f.writeAsString(content, flush: true);
+    await compute(persistMetadataIsolate, {
+      'file': f,
+      'content': _cache[project]!,
+    });
+
     final s = _storage.descriptionsFile(project);
-    await s.writeAsString(jsonEncode(_suggestions[project]), flush: true);
+    await compute(persistMetadataIsolate, {
+      'file': s,
+      'content': _suggestions[project],
+    });
   }
 
   Future<List<String>> suggestions(String project, String query) async {
