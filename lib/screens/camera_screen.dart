@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
@@ -167,12 +168,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<SavePhotoResult?> _savePhoto(XFile xFile, String description) async {
     try {
+      final token = RootIsolateToken.instance!;
       final params = SavePhotoParams(
         xFile: xFile,
         description: description,
         project: widget.project,
         location: widget.location,
         aspect: _aspectToDouble(aspect),
+        token: token,
+        appFolder: MediaStore.appFolder, // Pass the app folder
       );
 
       // Execute processing in a separate isolate

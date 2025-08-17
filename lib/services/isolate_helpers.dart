@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/services.dart';
 
 import 'package:archive/archive_io.dart';
 import 'package:camera/camera.dart';
@@ -18,12 +18,16 @@ class SavePhotoParams {
   final String project;
   final String location;
   final double? aspect;
+  final RootIsolateToken token;
+  final String appFolder;
 
   SavePhotoParams({
     required this.xFile,
     required this.description,
     required this.project,
     required this.location,
+    required this.token,
+    required this.appFolder,
     this.aspect,
   });
 }
@@ -38,6 +42,14 @@ class SavePhotoResult {
 
 /// ISOLATE: Processes and saves a photo.
 Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
+  // Ensure the platform channel is initialized.
+  BackgroundIsolateBinaryMessenger.ensureInitialized(params.token);
+
+  // Initialize MediaStore within the isolate.
+  if (Platform.isAndroid) {
+    await MediaStore.ensureInitialized();
+    MediaStore.appFolder = params.appFolder;
+  }
   File? tempFile;
   try {
     final relativePath = p.join(params.project, params.location);
