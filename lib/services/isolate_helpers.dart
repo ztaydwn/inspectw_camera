@@ -6,11 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:archive/archive_io.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
-import 'package:media_store_plus/media_store_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../constants.dart';
 import '../models.dart';
 
 // Helper class to pass arguments to the photo saving isolate
@@ -32,7 +30,7 @@ class SavePhotoParams {
   });
 }
 
-// Helper class to return results from the photo saving isolate
+// Result returned after saving a photo to MediaStore
 class SavePhotoResult {
   final String fileName;
   final String relativePath;
@@ -40,76 +38,48 @@ class SavePhotoResult {
   SavePhotoResult({required this.fileName, required this.relativePath});
 }
 
-/// ISOLATE: Processes and saves a photo.
-Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
-  // Ensure the platform channel is initialized.
+// Result from processing a photo in an isolate
+class ProcessPhotoResult {
+  final String filePath;
+  final bool isTempFile;
+
+  ProcessPhotoResult({required this.filePath, required this.isTempFile});
+}
+
+/// ISOLATE: Processes a photo (crop/aspect) and returns a path to a file to save.
+Future<ProcessPhotoResult?> processPhotoIsolate(SavePhotoParams params) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(params.token);
 
-  // Initialize MediaStore within the isolate.
-  if (Platform.isAndroid) {
-    await MediaStore.ensureInitialized();
-    MediaStore.appFolder = kAppFolder;
-  }
-  File? tempFile;
-  try {
-    final relativePathForPlugin = p.join(params.project, params.location);
-    Uint8List bytes = await params.xFile.readAsBytes();
+  Uint8List bytes = await params.xFile.readAsBytes();
 
-    if (params.aspect != null) {
-      final i = img.decodeImage(bytes);
-      if (i != null) {
-        final w = i.width;
-        final h = i.height;
-        final cur = w / h;
-        int cw = w, ch = h, x = 0, y = 0;
-        if (cur > params.aspect!) {
-          cw = (h * params.aspect!).round();
-          x = ((w - cw) / 2).round();
-        } else if (cur < params.aspect!) {
-          ch = (w / params.aspect!).round();
-          y = ((h - ch) / 2).round();
-        }
-        bytes = Uint8List.fromList(img.encodeJpg(
-            img.copyCrop(i, x: x, y: y, width: cw, height: ch),
-            quality: 92));
+  if (params.aspect != null) {
+    final i = img.decodeImage(bytes);
+    if (i != null) {
+      final w = i.width;
+      final h = i.height;
+      final cur = w / h;
+      int cw = w, ch = h, x = 0, y = 0;
+      if (cur > params.aspect!) {
+        cw = (h * params.aspect!).round();
+        x = ((w - cw) / 2).round();
+      } else if (cur < params.aspect!) {
+        ch = (w / params.aspect!).round();
+        y = ((h - ch) / 2).round();
       }
-    }
-
-    String filePathToSave = params.xFile.path;
-    if (params.aspect != null) {
-      final tempDir = await getTemporaryDirectory();
-      tempFile = File(p.join(tempDir.path, p.basename(params.xFile.path)));
-      await tempFile.writeAsBytes(bytes, flush: true);
-      filePathToSave = tempFile.path;
-    }
-
-    if (Platform.isAndroid) {
-      final mediaStore = MediaStore();
-      final saveInfo = await mediaStore.saveFile(
-        tempFilePath: filePathToSave,
-        dirType: DirType.photo,
-        dirName: DirName.dcim,
-        relativePath: relativePathForPlugin,
-      );
-
-      if (saveInfo != null && saveInfo.isSuccessful) {
-        return SavePhotoResult(
-            fileName: saveInfo.name, relativePath: saveInfo.uri.path);
-      } else {
-        debugPrint('[Camera] Save failed. Status: ${saveInfo?.saveStatus}');
-        debugPrint(
-            '[Camera] Save failed. Error: ${saveInfo?.saveStatus}'); // Assuming saveStatus also contains error info
-        return null;
-      }
-    }
-    return null;
-  } finally {
-    if (tempFile != null) {
-      try {
-        await tempFile.delete();
-      } catch (_) {}
+      bytes = Uint8List.fromList(
+          img.encodeJpg(img.copyCrop(i, x: x, y: y, width: cw, height: ch),
+              quality: 92));
     }
   }
+
+  if (params.aspect != null) {
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File(p.join(tempDir.path, p.basename(params.xFile.path)));
+    await tempFile.writeAsBytes(bytes, flush: true);
+    return ProcessPhotoResult(filePath: tempFile.path, isTempFile: true);
+  }
+
+  return ProcessPhotoResult(filePath: params.xFile.path, isTempFile: false);
 }
 
 // Helper class to pass arguments to the zip creation isolate
@@ -119,8 +89,8 @@ class CreateZipParams {
   final String descriptions;
   final List<String> resolvedPaths;
 
-  CreateZipParams(
-      {required this.photos,
+  CreateZipParams({
+      required this.photos,
       required this.project,
       required this.descriptions,
       required this.resolvedPaths});
@@ -159,3 +129,4 @@ Future<void> persistMetadataIsolate(Map<String, dynamic> params) async {
   final dynamic content = params['content'];
   await file.writeAsString(jsonEncode(content), flush: true);
 }
+
