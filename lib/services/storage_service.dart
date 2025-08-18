@@ -42,6 +42,17 @@ class StorageService {
   File descriptionsFile(String project) =>
       File('${_appDir.path}/projects/$project/descriptions.json');
 
+  /// Returns the base DCIM directory path.
+  /// Note: getExternalStorageDirectory() is deprecated, but used here to get
+  /// a common base for DCIM on Android. For new apps, consider using MediaStore APIs
+  /// directly for media access.
+  Future<Directory?> dcimBase() async {
+    if (!Platform.isAndroid) return null;
+    final Directory? externalStorageDir = await getExternalStorageDirectory();
+    if (externalStorageDir == null) return null;
+    return Directory('${externalStorageDir.path}/DCIM');
+  }
+
   /// Crea ambos archivos si no existen, con contenido inicial válido
   Future<void> ensureProjectDataFiles(String project) async {
     final meta = metadataFile(project);
@@ -74,7 +85,9 @@ class StorageService {
     try {
       final mediaStore = MediaStore();
       // Corrected method call: use getFile instead of getFileFromUri
-      final File? file = await mediaStore.getFile(contentUri);
+      final String? filePath = await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
+      if (filePath == null) return null;
+      final File file = File(filePath);
       return file;
     } catch (e) {
       // Use a logger or debugPrint instead of print
