@@ -104,8 +104,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
         }
       }
 
-      final dcimDir = await storage.dcimBase();
-      if (dcimDir == null) {
+      Directory dcimDir;
+      try {
+        dcimDir = await storage.dcimBase();
+      } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Could not access DCIM directory.')));
