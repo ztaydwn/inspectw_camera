@@ -117,13 +117,13 @@ class CreateZipParams {
   final List<PhotoEntry> photos;
   final String project;
   final String descriptions;
-  final String dcimPath;
+  final List<String> resolvedPaths;
 
   CreateZipParams(
       {required this.photos,
       required this.project,
       required this.descriptions,
-      required this.dcimPath});
+      required this.resolvedPaths});
 }
 
 /// ISOLATE: Creates a zip file from photos.
@@ -134,11 +134,10 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   final encoder = ZipFileEncoder();
   encoder.create(zipPath);
 
-  final dcimBase = Directory(params.dcimPath);
-
-  for (final photo in params.photos) {
-    // Construct the file path manually to avoid async calls in the loop
-    final fileInDcim = File(p.join(dcimBase.path, photo.relativePath));
+  for (var i = 0; i < params.photos.length; i++) {
+    final photo = params.photos[i];
+    final path = params.resolvedPaths[i];
+    final fileInDcim = File(path);
     if (fileInDcim.existsSync()) {
       final bytes = await fileInDcim.readAsBytes();
       final archivePath = p.join(photo.location, photo.fileName);
