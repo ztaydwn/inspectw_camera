@@ -42,15 +42,21 @@ class StorageService {
   File descriptionsFile(String project) =>
       File('${_appDir.path}/projects/$project/descriptions.json');
 
-  /// Returns the base DCIM directory path.
-  /// Note: getExternalStorageDirectory() is deprecated, but used here to get
-  /// a common base for DCIM on Android. For new apps, consider using MediaStore APIs
-  /// directly for media access.
-  Future<Directory?> dcimBase() async {
-    if (!Platform.isAndroid) return null;
-    final Directory? externalStorageDir = await getExternalStorageDirectory();
-    if (externalStorageDir == null) return null;
-    return Directory('${externalStorageDir.path}/DCIM');
+  /// Returns the public DCIM directory on Android.
+  /// Creates the directory if it does not exist.
+  ///
+  /// Throws [UnsupportedError] if called on a non-Android platform.
+  Future<Directory> dcimBase() async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError('DCIM directory is only available on Android');
+    }
+
+    const dcimPath = '/storage/emulated/0/DCIM';
+    final dir = Directory(dcimPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
   }
 
   /// Crea ambos archivos si no existen, con contenido inicial válido
