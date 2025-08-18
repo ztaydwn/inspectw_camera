@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:archive/archive_io.dart';
@@ -94,6 +95,10 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
       if (saveInfo != null && saveInfo.isSuccessful) {
         return SavePhotoResult(
             fileName: saveInfo.name, relativePath: saveInfo.uri.path);
+      } else {
+        debugPrint(
+            '[Camera] Save failed. Status: ${saveInfo?.saveStatus}, Error: ${saveInfo?.errorMessage}');
+        return null;
       }
     }
     return null;
