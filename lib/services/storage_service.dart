@@ -76,6 +76,13 @@ class StorageService {
       return null;
     }
 
+    try {
+      await MediaStore.ensureInitialized();
+    } catch (e) {
+      debugPrint('Error initializing MediaStore: $e');
+      return null;
+    }
+
     // Reconstruct the content URI from the stored relativePath.
     // The relativePath is actually the .path segment of the content URI.
     // Example: relativePath = '/external_primary/images/media/1000090241'
@@ -85,7 +92,8 @@ class StorageService {
     try {
       final mediaStore = MediaStore();
       // Corrected method call: use getFile instead of getFileFromUri
-      final String? filePath = await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
+      final String? filePath =
+          await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
       if (filePath == null) return null;
       final File file = File(filePath);
       return file;

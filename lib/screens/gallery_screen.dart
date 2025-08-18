@@ -4,6 +4,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:media_store_plus/media_store_plus.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
 import '../models.dart';
@@ -59,6 +60,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ));
         }
         if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      try {
+        await MediaStore.ensureInitialized();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No se puede acceder a la galería.'),
+          ));
+          setState(() => _isLoading = false);
+        }
         return;
       }
     }
