@@ -96,8 +96,9 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
         return SavePhotoResult(
             fileName: saveInfo.name, relativePath: saveInfo.uri.path);
       } else {
+        debugPrint('[Camera] Save failed. Status: ${saveInfo?.saveStatus}');
         debugPrint(
-            '[Camera] Save failed. Status: ${saveInfo?.saveStatus}, Error: ${saveInfo?.errorMessage}');
+            '[Camera] Save failed. Error: ${saveInfo?.saveStatus}'); // Assuming saveStatus also contains error info
         return null;
       }
     }
