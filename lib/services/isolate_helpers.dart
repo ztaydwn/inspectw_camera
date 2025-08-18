@@ -47,9 +47,11 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
   // Initialize MediaStore within the isolate.
   if (Platform.isAndroid) {
     await MediaStore.ensureInitialized();
+    MediaStore.appFolder = kAppFolder;
   }
   File? tempFile;
   try {
+    final relativePathForPlugin = p.join(params.project, params.location);
     Uint8List bytes = await params.xFile.readAsBytes();
 
     if (params.aspect != null) {
@@ -82,19 +84,16 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
 
     if (Platform.isAndroid) {
       final mediaStore = MediaStore();
-      final relativePath =
-          p.join(kAppFolder, params.project, params.location);
       final saveInfo = await mediaStore.saveFile(
         tempFilePath: filePathToSave,
         dirType: DirType.photo,
         dirName: DirName.dcim,
-        relativePath: relativePath,
+        relativePath: relativePathForPlugin,
       );
 
       if (saveInfo != null && saveInfo.isSuccessful) {
-        final metadataRelativePath = p.join(relativePath, saveInfo.name);
         return SavePhotoResult(
-            fileName: saveInfo.name, relativePath: metadataRelativePath);
+            fileName: saveInfo.name, relativePath: saveInfo.uri.path);
       }
     }
     return null;
