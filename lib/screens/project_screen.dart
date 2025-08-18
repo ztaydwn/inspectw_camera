@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/isolate_helpers.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
+import '../models.dart';
 import 'gallery_screen.dart';
 import 'camera_screen.dart';
 import '../constants.dart';
@@ -72,13 +73,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
+      final photosWithPaths = <PhotoEntry>[];
+      final resolvedPaths = <String>[];
+      for (final photo in allPhotos) {
+        final f = await storage.dcimFileFromRelativePath(photo.relativePath);
+        if (f != null && await f.exists()) {
+          photosWithPaths.add(photo);
+          resolvedPaths.add(f.path);
+        }
+      }
+
+      if (photosWithPaths.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No photo files found for this project.')));
+        }
+        return null;
+      }
+
       final descriptions = StringBuffer();
       descriptions.writeln('Project: ${widget.project}');
       descriptions.writeln(
           'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
       descriptions.writeln('---');
 
-      for (final photo in allPhotos) {
+      for (final photo in photosWithPaths) {
         descriptions.writeln('[${photo.location}] ${photo.fileName}');
         descriptions.writeln('  Description: ${photo.description}');
         descriptions.writeln(
@@ -104,22 +123,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
         }
       }
 
-      Directory dcimDir;
-      try {
-        dcimDir = await storage.dcimBase();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not access DCIM directory.')));
-        }
-        return null;
-      }
-
       final params = CreateZipParams(
-        photos: allPhotos,
+        photos: photosWithPaths,
         project: widget.project,
         descriptions: descriptions.toString(),
-        dcimPath: dcimDir.path,
+        resolvedPaths: resolvedPaths,
       );
 
       final zipPath = await compute(createZipIsolate, params);
@@ -132,10 +140,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      debugPrint('[ZIP] Created $zipPath with ${allPhotos.length} entries.');
+      debugPrint(
+          '[ZIP] Created $zipPath with ${photosWithPaths.length} entries.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('ZIP created with ${allPhotos.length} photo(s).')));
+            content:
+                Text('ZIP created with ${photosWithPaths.length} photo(s).')));
       }
       return zipPath;
     } catch (e, s) {
