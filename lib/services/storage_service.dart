@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:media_store_plus/media_store_plus.dart';
 
 class StorageService {
   static final StorageService _i = StorageService._();
@@ -53,33 +54,29 @@ class StorageService {
     }
   }
 
-  /// No pide permisos aquí; pídelo en la UI (READ_MEDIA_IMAGES o READ_EXTERNAL_STORAGE).
-  Future<Directory?> dcimBase() async {
-    if (!Platform.isAndroid) return null;
-    // La forma más consistente de acceder a la carpeta pública DCIM es usando
-    // su ruta estándar. Los métodos de path_provider tienden a devolver
-    // directorios específicos de la app (dentro de /Android/data), que no
-    // es lo que queremos para una galería pública.
-    final publicDcim = Directory('/storage/emulated/0/DCIM');
-    if (await publicDcim.exists()) {
-      return publicDcim;
-    }
-
-    // Un fallback común en dispositivos más antiguos.
-    final legacyPublicDcim = Directory('/sdcard/DCIM');
-    if (await legacyPublicDcim.exists()) {
-      return legacyPublicDcim;
-    }
-
-    // Si ninguna de las rutas públicas existe, es posible que el almacenamiento
-    // no esté disponible o la estructura sea no estándar. Devolvemos null.
-    return null;
-  }
-
   /// Devuelve el archivo en DCIM a partir de la ruta relativa guardada en metadatos.
+  /// This now expects the relativePath to be the .path of a content URI.
   Future<File?> dcimFileFromRelativePath(String relativePath) async {
-    final base = await dcimBase();
-    if (base == null) return null;
-    return File(p.join(base.path, relativePath));
+    if (!Platform.isAndroid) {
+      // For non-Android platforms, assume relativePath is a direct file path
+      // or handle as appropriate for the platform.
+      // For now, returning null as this is an Android-specific issue.
+      return null;
+    }
+
+    // Reconstruct the content URI from the stored relativePath.
+    // The relativePath is actually the .path segment of the content URI.
+    // Example: relativePath = '/external_primary/images/media/1000090241'
+    // Full URI should be: 'content://media/external_primary/images/media/1000090241'
+    final Uri contentUri = Uri.parse('content://media' + relativePath);
+
+    try {
+      final mediaStore = MediaStore();
+      final File? file = await mediaStore.getFileFromUri(contentUri);
+      return file;
+    } catch (e) {
+      print('Error resolving file from URI: $e');
+      return null;
+    }
   }
 }
