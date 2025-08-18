@@ -205,28 +205,58 @@ class _CameraScreenState extends State<CameraScreen> {
         token: token,
       );
 
-      // Execute processing in a separate isolate
-      final result = await compute(savePhotoIsolate, params);
+      // Process image data off the main isolate
+      final processed = await compute(processPhotoIsolate, params);
 
-      if (result == null) {
+      if (processed == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content:
-                  Text('Error: No se pudo guardar la foto en la galería.')));
+              content: Text('Error: No se pudo procesar la foto.')));
         }
         return null;
       }
 
-      // Save metadata on the main thread
+      await MediaStore.ensureInitialized();
+      MediaStore.appFolder = kAppFolder;
+      final mediaStore = MediaStore();
+      final saveInfo = await mediaStore.saveFile(
+        tempFilePath: processed.filePath,
+        dirType: DirType.photo,
+        dirName: DirName.dcim,
+        relativePath: '${widget.project}/${widget.location}',
+      );
+
+      if (saveInfo == null || !saveInfo.isSuccessful) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Error: No se pudo guardar la foto en la galería.')));
+        }
+        if (processed.isTempFile) {
+          try {
+            await File(processed.filePath).delete();
+          } catch (_) {}
+        }
+        return null;
+      }
+
+      final result =
+          SavePhotoResult(fileName: saveInfo.name, relativePath: saveInfo.uri.path);
+
       if (!mounted) return null;
       await context.read<MetadataService>().addPhoto(
-            project: widget.project,
-            location: widget.location,
-            fileName: result.fileName,
-            relativePath: result.relativePath,
-            description: description,
-            takenAt: DateTime.now(),
-          );
+        project: widget.project,
+        location: widget.location,
+        fileName: result.fileName,
+        relativePath: result.relativePath,
+        description: description,
+        takenAt: DateTime.now(),
+      );
+
+      if (processed.isTempFile) {
+        try {
+          await File(processed.filePath).delete();
+        } catch (_) {}
+      }
 
       return result;
     } catch (e) {
