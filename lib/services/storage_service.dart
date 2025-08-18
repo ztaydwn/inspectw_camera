@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:flutter/foundation.dart'; // Add this import for debugPrint
 
 class StorageService {
   static final StorageService _i = StorageService._();
@@ -68,14 +69,16 @@ class StorageService {
     // The relativePath is actually the .path segment of the content URI.
     // Example: relativePath = '/external_primary/images/media/1000090241'
     // Full URI should be: 'content://media/external_primary/images/media/1000090241'
-    final Uri contentUri = Uri.parse('content://media' + relativePath);
+    final Uri contentUri = Uri.parse('content://media$relativePath');
 
     try {
       final mediaStore = MediaStore();
-      final File? file = await mediaStore.getFileFromUri(contentUri);
+      // Corrected method call: use getFile instead of getFileFromUri
+      final File? file = await mediaStore.getFile(contentUri);
       return file;
     } catch (e) {
-      print('Error resolving file from URI: $e');
+      // Use a logger or debugPrint instead of print
+      debugPrint('Error resolving file from URI: $e');
       return null;
     }
   }
