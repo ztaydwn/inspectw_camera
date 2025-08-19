@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.inspectw_camera"
-    compileSdk = flutter.compileSdkVersion
+    compileSdkVersion 34
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -24,21 +24,23 @@ android {
         applicationId = "com.example.inspectw_camera"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        minSdkVersion 21
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+        multiDexEnabled true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Primero valida con minify OFF; si todo ok, actívalo y usa ProGuard.
+            minifyEnabled true      // pon false para aislar problemas de R8
+            shrinkResources true     // opcional
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
         }
     }
-}
-
-flutter {
-    source = "../.."
 }

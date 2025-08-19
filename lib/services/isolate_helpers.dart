@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:archive/archive_io.dart';
@@ -66,9 +65,9 @@ Future<ProcessPhotoResult?> processPhotoIsolate(SavePhotoParams params) async {
         ch = (w / params.aspect!).round();
         y = ((h - ch) / 2).round();
       }
-      bytes = Uint8List.fromList(
-          img.encodeJpg(img.copyCrop(i, x: x, y: y, width: cw, height: ch),
-              quality: 92));
+      bytes = Uint8List.fromList(img.encodeJpg(
+          img.copyCrop(i, x: x, y: y, width: cw, height: ch),
+          quality: 92));
     }
   }
 
@@ -89,8 +88,8 @@ class CreateZipParams {
   final String descriptions;
   final List<String> resolvedPaths;
 
-  CreateZipParams({
-      required this.photos,
+  CreateZipParams(
+      {required this.photos,
       required this.project,
       required this.descriptions,
       required this.resolvedPaths});
@@ -129,4 +128,3 @@ Future<void> persistMetadataIsolate(Map<String, dynamic> params) async {
   final dynamic content = params['content'];
   await file.writeAsString(jsonEncode(content), flush: true);
 }
-
