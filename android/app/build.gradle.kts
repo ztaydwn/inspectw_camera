@@ -1,22 +1,24 @@
+import java.util.Properties
+import java.io.FileInputStream
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.inspectw_camera"
-    compileSdkVersion 34
+    compileSdk = 35;
     ndkVersion = "27.0.12077973"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -24,23 +26,38 @@ android {
         applicationId = "com.example.inspectw_camera"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdkVersion 21
-        targetSdkVersion 34
-        versionCode 1
-        versionName "1.0"
-        multiDexEnabled true
+        minSdk = 21;
+        targetSdk = 34;
+        versionCode = 1;
+        versionName = "1.0";
+        multiDexEnabled = true;
+    }
+    signingConfigs {
+        create("release") {
+            val props = Properties()
+            val kp = file("${rootDir}/key.properties")
+            require(kp.exists()) { "key.properties no encontrado en ${kp.path}" }
+            FileInputStream(kp).use { props.load(it) }
+
+            storeFile = file(props["storeFile"] as String)
+            storePassword = props["storePassword"] as String
+            keyAlias = props["keyAlias"] as String
+            keyPassword = props["keyPassword"] as String
+        }
     }
 
     buildTypes {
         release {
-            // Primero valida con minify OFF; si todo ok, actívalo y usa ProGuard.
-            minifyEnabled true      // pon false para aislar problemas de R8
-            shrinkResources true     // opcional
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
-                    'proguard-rules.pro'
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false          // pon false si quieres probar sin R8
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                file("proguard-rules.pro")
+            )
         }
         debug {
-            minifyEnabled false
+            isMinifyEnabled = false
         }
     }
 }
