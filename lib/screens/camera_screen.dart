@@ -5,10 +5,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 
 import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
@@ -31,7 +29,7 @@ class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   List<CameraDescription> cameras = [];
   ResolutionPreset preset = ResolutionPreset.max;
-  FlashMode flash = FlashMode.auto;
+  FlashMode _flashMode = FlashMode.off;
   double zoom = 1.0, minZoom = 1.0, maxZoom = 4.0;
   int selectedBackIndex = 0;
   AspectOpt aspect = AspectOpt.sensor;
@@ -40,15 +38,28 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   }
 
-  Future<void> _bootstrap() async {
-    if (Platform.isAndroid) {
-      await MediaStore.ensureInitialized();
-      MediaStore.appFolder = kAppFolder;
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations(
+        DeviceOrientation.values); // restaurar
+    super.dispose();
+  }
+
+  Future<void> _toggleFlash() async {
+    if (controller == null) return;
+    final newMode =
+        _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
+    try {
+      await controller!.setFlashMode(newMode);
+      setState(() {
+        _flashMode = newMode;
+      });
+    } on CameraException catch (e) {
+      debugPrint('Error setting flash mode: $e');
     }
-    await _initCam();
   }
 
   double? _aspectToDouble(AspectOpt a) {
@@ -64,68 +75,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<void> _initCam() async {
-    // Request camera permission
-    final cameraStatus = await Permission.camera.request();
-    if (!cameraStatus.isGranted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Permiso de cámara denegado.'),
-          action: SnackBarAction(
-            label: 'Abrir ajustes',
-            onPressed: openAppSettings,
-          ),
-        ));
-      }
-      return;
-    }
-
-    // Request storage permission
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      PermissionStatus storageStatus;
-      if (androidInfo.version.sdkInt >= 33) {
-        storageStatus = await Permission.photos.request();
-      } else {
-        storageStatus = await Permission.storage.request();
-      }
-
-      if (!storageStatus.isGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Permiso de almacenamiento denegado.'),
-            action: SnackBarAction(
-              label: 'Abrir ajustes',
-              onPressed: openAppSettings,
-            ),
-          ));
-        }
-        return;
-      }
-    }
-
-    try {
-      cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No se encontraron cámaras.')));
-        }
-        return;
-      }
-      final backs = cameras
-          .where((c) => c.lensDirection == CameraLensDirection.back)
-          .toList();
-      selectedBackIndex = backs.isNotEmpty ? cameras.indexOf(backs.first) : 0;
-      await _startController();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al iniciar la cámara: $e')));
-      }
-    }
-  }
-
   Future<void> _startController() async {
     if (cameras.isEmpty) return;
     final cam = CameraController(cameras[selectedBackIndex], preset,
@@ -133,7 +82,7 @@ class _CameraScreenState extends State<CameraScreen> {
     controller = cam;
     try {
       await cam.initialize();
-      await cam.unlockCaptureOrientation();
+      await cam.lockCaptureOrientation(DeviceOrientation.portraitUp);
       minZoom = await cam.getMinZoomLevel();
       maxZoom = await cam.getMaxZoomLevel();
     } on CameraException catch (e) {
@@ -153,7 +102,7 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isTakingPhoto = true);
 
     try {
-      await cam.setFlashMode(flash);
+      await cam.setFlashMode(_flashMode);
       final xFile = await cam.takePicture();
       debugPrint('[Camera] temp: ${xFile.path}');
 
@@ -229,7 +178,8 @@ class _CameraScreenState extends State<CameraScreen> {
       if (saveInfo == null || !saveInfo.isSuccessful) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Error: No se pudo guardar la foto en la galería.')));
+              content:
+                  Text('Error: No se pudo guardar la foto en la galería.')));
         }
         if (processed.isTempFile) {
           try {
@@ -239,22 +189,27 @@ class _CameraScreenState extends State<CameraScreen> {
         return null;
       }
 
-      final result =
-          SavePhotoResult(fileName: saveInfo.name, relativePath: saveInfo.uri.path);
+      final result = SavePhotoResult(
+          fileName: saveInfo.name, relativePath: saveInfo.uri.path);
 
       if (!mounted) return null;
       await context.read<MetadataService>().addPhoto(
-        project: widget.project,
-        location: widget.location,
-        fileName: result.fileName,
-        relativePath: result.relativePath,
-        description: description,
-        takenAt: DateTime.now(),
-      );
+            project: widget.project,
+            location: widget.location,
+            fileName: result.fileName,
+            relativePath: result.relativePath,
+            description: description,
+            takenAt: DateTime.now(),
+          );
 
       if (processed.isTempFile) {
         try {
-          await File(processed.filePath).delete();
+          if (processed.filePath.isNotEmpty) {
+            final src = File(processed.filePath);
+            if (await src.exists()) {
+              await src.delete();
+            }
+          }
         } catch (_) {}
       }
 
@@ -277,12 +232,11 @@ class _CameraScreenState extends State<CameraScreen> {
         title: Text('${widget.project} / ${widget.location}'),
         actions: [
           IconButton(
-              icon: const Icon(Icons.cameraswitch),
-              onPressed: () async {
-                if (cameras.isEmpty) return;
-                selectedBackIndex = (selectedBackIndex + 1) % cameras.length;
-                await _startController();
-              }),
+            icon: Icon(_flashMode == FlashMode.torch
+                ? Icons.flash_on
+                : Icons.flash_off),
+            onPressed: _toggleFlash,
+          ),
           PopupMenuButton<ResolutionPreset>(
             icon: const Icon(Icons.hd),
             onSelected: (p) async {
