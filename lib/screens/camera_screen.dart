@@ -39,6 +39,12 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    cameras = await availableCameras();
+    await _startController();
   }
 
   @override
