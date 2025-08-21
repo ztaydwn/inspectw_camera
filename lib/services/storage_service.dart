@@ -109,4 +109,15 @@ class StorageService {
       return null;
     }
   }
+
+  Future<int> projectSizeBytes(String project) async {
+    await init();
+    final dir = Directory(p.join(_appDir.path, 'projects', project));
+    if (!await dir.exists()) return 0;
+    int total = 0;
+    await for (final f in dir.list(recursive: true)) {
+      if (f is File) total += await f.length();
+    }
+    return total;
+  }
 }

@@ -65,9 +65,22 @@ Future<ProcessPhotoResult?> processPhotoIsolate(SavePhotoParams params) async {
         ch = (w / params.aspect!).round();
         y = ((h - ch) / 2).round();
       }
-      bytes = Uint8List.fromList(img.encodeJpg(
-          img.copyCrop(i, x: x, y: y, width: cw, height: ch),
-          quality: 92));
+      final cropped = img.copyCrop(i, x: x, y: y, width: cw, height: ch);
+
+      // ⚡ downscale si es gigante: reduce trabajo y tamaño final
+      const targetMax = 3000; // 2560–3000 es buen equilibrio para informes
+      final maxEdge =
+          cropped.width > cropped.height ? cropped.width : cropped.height;
+      final resized = maxEdge > targetMax
+          ? img.copyResize(
+              cropped,
+              width: (cropped.width * targetMax / maxEdge).round(),
+              height: (cropped.height * targetMax / maxEdge).round(),
+            )
+          : cropped;
+
+      // ⚡ JPEG más rápido (y más chico)
+      bytes = Uint8List.fromList(img.encodeJpg(resized, quality: 85));
     }
   }
 
