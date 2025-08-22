@@ -168,3 +168,17 @@ const Map<String, List<String>> kDescriptionGroups = {
     'S/N	Otras observaciones',
   ],
 };
+
+/// Lista de descripciones genéricas de respaldo.
+const List<String> kDefaultDescriptions = [
+  'oxidado',
+  'roto',
+  'faltante',
+  'corrosión',
+  'grieta',
+  'fisura',
+  'humedad',
+  'desgastado',
+  'suelto',
+  'mal estado',
+];

@@ -300,10 +300,9 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
     );
     if (selectedGroup == null) return null;
-
+    if (!mounted) return null;
     // Mostrar el selector de descripción con las opciones del grupo.
     final desc = await showModalBottomSheet<String?>(
-      // ignore: use_build_context_synchronously
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
