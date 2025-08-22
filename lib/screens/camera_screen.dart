@@ -285,35 +285,197 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<String?> _askForDescription({String? initialHint}) async {
-    // Mostrar lista de grupos.
+  Future<String?> _askForDescription() async {
+    // 1. Mostrar lista de grupos principales
     final selectedGroup = await showModalBottomSheet<String?>(
       context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: kDescriptionGroups.keys.map((group) {
-          return ListTile(
-            title: Text(group),
-            onTap: () => Navigator.pop(ctx, group),
-          );
-        }).toList(),
-      ),
-    );
-    if (selectedGroup == null) return null;
-    if (!mounted) return null;
-    // Mostrar el selector de descripción con las opciones del grupo.
-    final desc = await showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: DescriptionInput(
-          project: widget.project,
-          initial: initialHint,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Selecciona un grupo:',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: kDescriptionGroups.keys.map((group) {
+                  return ListTile(
+                    title: Text(group),
+                    onTap: () => Navigator.pop(ctx, group),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ),
     );
-    return desc;
+
+    if (selectedGroup == null || !mounted) return null;
+
+    // 2. Obtener los subgrupos del grupo seleccionado
+    final subgroups = kDescriptionGroups[selectedGroup] ?? [];
+    if (subgroups.isEmpty) return null;
+
+    // 3. Mostrar lista de subgrupos
+    final selectedSubgroup = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+                Expanded(
+                  child: Text(
+                    selectedGroup,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: subgroups.length,
+                itemBuilder: (context, index) {
+                  final subgroup = subgroups[index];
+                  return ListTile(
+                    title: Text(
+                      subgroup,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    onTap: () => Navigator.pop(ctx, subgroup),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedSubgroup == null || !mounted) return null;
+
+    // 4. Usar DescriptionInput para agregar información adicional
+    final additionalText = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header con el subgrupo seleccionado
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Agregar información adicional',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Text(
+                    'Subgrupo: $selectedSubgroup',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // DescriptionInput con padding adicional
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: DescriptionInput(
+              project: widget.project,
+              initial: '', // Empezar vacío para que agreguen texto adicional
+              presets: const [
+                'oxidado',
+                'roto',
+                'faltante',
+                'corrosión',
+                'grieta',
+                'fisura',
+                'humedad',
+                'desgastado',
+                'suelto',
+                'mal estado',
+                'presenta daños',
+                'no funciona',
+                'en buen estado',
+                'requiere mantenimiento',
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // 5. Construir la descripción final
+    if (additionalText == null) return null;
+
+    if (additionalText.isEmpty) {
+      return selectedSubgroup; // Solo el subgrupo
+    } else {
+      return '$selectedSubgroup + $additionalText'; // Subgrupo + texto adicional
+    }
   }
 
   Future<SavePhotoResult?> _savePhoto(XFile xFile, String description) async {
