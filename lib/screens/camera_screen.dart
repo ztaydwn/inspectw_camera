@@ -286,10 +286,24 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<String?> _askForDescription({String? initialHint}) async {
-    // ignore: prefer_const_declarations
-    final presets = kDefaultDescriptions;
+    // Mostrar lista de grupos.
+    final selectedGroup = await showModalBottomSheet<String?>(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: kDescriptionGroups.keys.map((group) {
+          return ListTile(
+            title: Text(group),
+            onTap: () => Navigator.pop(ctx, group),
+          );
+        }).toList(),
+      ),
+    );
+    if (selectedGroup == null) return null;
 
-    return showModalBottomSheet<String?>(
+    // Mostrar el selector de descripción con las opciones del grupo.
+    final desc = await showModalBottomSheet<String?>(
+      // ignore: use_build_context_synchronously
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
@@ -297,10 +311,10 @@ class _CameraScreenState extends State<CameraScreen> {
         child: DescriptionInput(
           project: widget.project,
           initial: initialHint,
-          presets: presets,
         ),
       ),
     );
+    return desc;
   }
 
   Future<SavePhotoResult?> _savePhoto(XFile xFile, String description) async {
