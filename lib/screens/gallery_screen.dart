@@ -1,4 +1,3 @@
-// lib/screens/gallery_screen.dart — v6 (path fix)
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
 import '../models.dart';
-import '../widgets/description_input.dart';
+import 'photo_viewer_screen.dart';
 
 class GalleryScreen extends StatefulWidget {
   final String project;
@@ -86,8 +85,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
       if (file != null && await file.exists()) {
         _resolvedFiles[pEntry.id] = file;
       } else {
-        debugPrint(
-            'File not found for relative path: ${pEntry.relativePath}');
+        debugPrint('File not found for relative path: ${pEntry.relativePath}');
       }
     }
 
@@ -95,52 +93,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _editDescription(PhotoEntry p) async {
-    final desc = await showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child:
-            DescriptionInput(project: widget.project, initial: p.description),
-      ),
-    );
-    if (desc != null) {
-      await meta.updateDescription(widget.project, p.id, desc);
-      await _load();
-    }
-  }
-
-  Future<void> _showDeleteDialog(PhotoEntry p) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Eliminar foto'),
-        content: const Text(
-            '¿Estás seguro de que quieres eliminar esta foto? Esta acción no se puede deshacer.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('Eliminar')),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await _deletePhoto(p);
-    }
-  }
-
-  Future<void> _deletePhoto(PhotoEntry p) async {
-    await meta.deletePhoto(widget.project, p.id);
-    await _load();
   }
 
   @override
@@ -164,8 +116,29 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     final fileToShow = _resolvedFiles[pEntry.id];
 
                     return GestureDetector(
-                      onTap: () => _editDescription(pEntry),
-                      onLongPress: () => _showDeleteDialog(pEntry),
+                      onTap: () async {
+                        if (fileToShow == null) return;
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PhotoViewerScreen(
+                              imagePath: fileToShow.path,
+                              description: pEntry.description,
+                              project: widget.project,
+                              photoId: pEntry.id,
+                              onDeleted: () {
+                                _load();
+                                Navigator.pop(context); // volver a la galería
+                              },
+                              onDescriptionUpdated: (newDesc) async {
+                                await meta.updateDescription(
+                                    widget.project, pEntry.id, newDesc);
+                                _load();
+                              },
+                            ),
+                          ),
+                        );
+                      },
                       child: GridTile(
                         footer: GridTileBar(
                           backgroundColor: Colors.black54,

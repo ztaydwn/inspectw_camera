@@ -1,30 +1,47 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:inspectw_camera/main.dart';
+import 'package:inspectw_camera/services/metadata_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
+  testWidgets('HomeScreen shows no projects message initially', (WidgetTester tester) async {
+    // Initialize the metadata service
+    final metadataService = MetadataService();
+    await metadataService.init();
+
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(InspectWApp(meta: metadataService));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify that the title is correct.
+    expect(find.text('InspectW – Proyectos'), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
+    // Verify that the "no projects" message is shown.
+    expect(find.text('Sin proyectos. Crea el primero.'), findsOneWidget);
+
+    // Verify that the FloatingActionButton is present.
+    expect(find.byIcon(Icons.add), findsOneWidget);
+  });
+
+  testWidgets('HomeScreen creates a project', (WidgetTester tester) async {
+    // Initialize the metadata service
+    final metadataService = MetadataService();
+    await metadataService.init();
+
+    // Build our app and trigger a frame.
+    await tester.pumpWidget(InspectWApp(meta: metadataService));
+
+    // Tap the '+' icon to open the dialog.
     await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Enter a project name in the TextField.
+    await tester.enterText(find.byType(TextField), 'Test Project');
+
+    // Tap the 'Crear' button.
+    await tester.tap(find.text('Crear'));
+    await tester.pump();
+
+    // Verify that the new project is listed.
+    expect(find.text('Test Project'), findsOneWidget);
   });
 }

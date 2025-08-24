@@ -120,4 +120,15 @@ class StorageService {
     }
     return total;
   }
+
+  Future<void> deleteFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e) {
+      debugPrint('Error deleting file: $e');
+    }
+  }
 }

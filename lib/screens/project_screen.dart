@@ -15,6 +15,7 @@ import '../models.dart';
 import 'gallery_screen.dart';
 import 'camera_screen.dart';
 import '../constants.dart';
+import 'search_explorer_screen.dart';
 
 class ProjectScreen extends StatefulWidget {
   final String project;
@@ -174,8 +175,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
         relativePath: '$kAppFolder/${widget.project}',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ZIP saved to Downloads/$kAppFolder')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('ZIP saved to Downloads/$kAppFolder')));
       }
     } catch (e) {
       debugPrint('[ZIP] Error saving to MediaStore: $e');
@@ -203,6 +204,18 @@ class _ProjectScreenState extends State<ProjectScreen> {
       appBar: AppBar(
         title: Text('Proyecto: ${widget.project}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      SearchExplorerScreen(project: widget.project),
+                ),
+              );
+            },
+          ),
           _isExporting
               ? const Padding(
                   padding: EdgeInsets.only(right: 16.0),

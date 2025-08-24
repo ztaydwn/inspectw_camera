@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models.dart';
 import 'isolate_helpers.dart';
+import 'photo_metadata.dart';
 import 'storage_service.dart';
 
 class MetadataService {
@@ -140,7 +141,7 @@ class MetadataService {
     }
   }
 
-  Future<void> deletePhoto(String project, String photoId) async {
+  Future<void> deletePhotoById(String project, String photoId) async {
     await _load(project);
     final list = _cache[project]!;
     final idx = list.indexWhere((e) => e.id == photoId);
@@ -178,5 +179,17 @@ class MetadataService {
     final filtered = map.keys.where((k) => k.toLowerCase().contains(q)).toList()
       ..sort((a, b) => (map[b]!).compareTo(map[a]!));
     return filtered.take(20).toList();
+  }
+
+  Future<List<PhotoMetadata>> getAllPhotosForProject(String project) async {
+    final dir = await _storage.ensureProject(project);
+    final files = await dir.list(recursive: true).toList();
+    final imageFiles = files.whereType<File>().where((f) {
+      final name = f.path.toLowerCase();
+      return name.endsWith('.jpg') || name.endsWith('.jpeg');
+    });
+
+    return Future.wait(
+        imageFiles.map((f) => PhotoMetadata.fromImageFile(f.path)));
   }
 }
