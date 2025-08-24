@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/isolate_helpers.dart';
 import '../services/storage_service.dart';
 import '../services/metadata_service.dart';
+import '../services/upload_service.dart';
 import '../models.dart';
 import 'gallery_screen.dart';
 import 'camera_screen.dart';
@@ -198,6 +199,36 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
+  Future<void> _uploadToDrive() async {
+    final project = widget.project;
+    final baseDir = Directory('/storage/emulated/0/InspectW/$project');
+
+    final imageFiles = <File>[];
+    await for (var entity
+        in baseDir.list(recursive: true, followLinks: false)) {
+      if (entity is File && entity.path.toLowerCase().endsWith('.jpg')) {
+        imageFiles.add(entity);
+      }
+    }
+
+    final jsonFile = File('${baseDir.path}/metadata.json');
+    if (!await jsonFile.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se encontró metadata.json')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    await uploadFilesToBackend(
+      imageFiles: imageFiles,
+      jsonFile: jsonFile,
+      projectName: project,
+      context: context,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -227,6 +258,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 )
               : IconButton(
                   onPressed: _exportProject, icon: const Icon(Icons.ios_share)),
+          IconButton(
+            icon: const Icon(Icons.cloud_upload),
+            onPressed: _uploadToDrive,
+          ),
         ],
       ),
       body: FutureBuilder<List<String>>(

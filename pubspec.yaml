@@ -24,6 +24,8 @@ dependencies:
   device_info_plus: ^11.5.0 # para detectar si es Android 10+ y usar DCIM
   diacritic: ^0.1.4
   speech_to_text: ^7.3.0
+  http: ^0.13.5
+  http_parser: ^4.0.3
 
 dev_dependencies:
   flutter_test:
