@@ -11,31 +11,43 @@ Future<void> uploadFilesToBackend({
   required String projectName,
   required BuildContext context,
 }) async {
+  debugPrint('🚀 Enviando archivos al backend...');
   try {
     final uri = Uri.parse(
-        'http://10.0.2.2:8000/upload'); // Cambiar a IP real si usas dispositivo físico
+        'http://192.168.0.14:8000/upload'); // Cambiar a IP real si usas dispositivo físico
 
     final request = http.MultipartRequest('POST', uri)
       ..fields['project'] = projectName;
 
     final stopwatch = Stopwatch()..start();
 
+    // Calcular tamaño total para informar al usuario
+    final totalFiles = imageFiles.length + 1;
+    double totalSizeMb = 0;
+    for (final file in imageFiles) {
+      totalSizeMb += await file.length() / (1024 * 1024); // a MB
+    }
+    totalSizeMb += await jsonFile.length() / (1024 * 1024);
+
     // Mostrar progreso
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        title: Text('Subiendo archivos'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Esto puede tardar unos segundos...'),
-          ],
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text('Subiendo archivos'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                  'Enviando $totalFiles archivos (${totalSizeMb.toStringAsFixed(2)} MB)...'),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     // Adjuntar imágenes
     for (final image in imageFiles) {
@@ -59,7 +71,6 @@ Future<void> uploadFilesToBackend({
       ),
     );
 
-    final totalFiles = imageFiles.length + 1;
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
 

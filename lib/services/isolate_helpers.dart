@@ -49,49 +49,45 @@ class ProcessPhotoResult {
 Future<ProcessPhotoResult?> processPhotoIsolate(SavePhotoParams params) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(params.token);
 
-  Uint8List bytes = await params.xFile.readAsBytes();
+  final bytes = await params.xFile.readAsBytes();
+  final image = img.decodeImage(bytes);
 
+  if (image == null) {
+    // Could not decode image, return original file path if possible
+    return ProcessPhotoResult(filePath: params.xFile.path, isTempFile: false);
+  }
+
+  img.Image processedImage = image;
+
+  // 1. Apply cropping if an aspect ratio is provided
   if (params.aspect != null) {
-    final i = img.decodeImage(bytes);
-    if (i != null) {
-      final w = i.width;
-      final h = i.height;
-      final cur = w / h;
-      int cw = w, ch = h, x = 0, y = 0;
-      if (cur > params.aspect!) {
-        cw = (h * params.aspect!).round();
-        x = ((w - cw) / 2).round();
-      } else if (cur < params.aspect!) {
-        ch = (w / params.aspect!).round();
-        y = ((h - ch) / 2).round();
-      }
-      final cropped = img.copyCrop(i, x: x, y: y, width: cw, height: ch);
+    final w = image.width;
+    final h = image.height;
+    final currentAspect = w / h;
+    int cropWidth = w, cropHeight = h, x = 0, y = 0;
 
-      // ⚡ downscale si es gigante: reduce trabajo y tamaño final
-      const targetMax = 3000; // 2560–3000 es buen equilibrio para informes
-      final maxEdge =
-          cropped.width > cropped.height ? cropped.width : cropped.height;
-      final resized = maxEdge > targetMax
-          ? img.copyResize(
-              cropped,
-              width: (cropped.width * targetMax / maxEdge).round(),
-              height: (cropped.height * targetMax / maxEdge).round(),
-            )
-          : cropped;
-
-      // ⚡ JPEG más rápido (y más chico)
-      bytes = Uint8List.fromList(img.encodeJpg(resized, quality: 85));
+    if (currentAspect > params.aspect!) {
+      // Wider than target: crop width
+      cropWidth = (h * params.aspect!).round();
+      x = ((w - cropWidth) / 2).round();
+    } else if (currentAspect < params.aspect!) {
+      // Taller than target: crop height
+      cropHeight = (w / params.aspect!).round();
+      y = ((h - cropHeight) / 2).round();
     }
+    processedImage =
+        img.copyCrop(image, x: x, y: y, width: cropWidth, height: cropHeight);
   }
 
-  if (params.aspect != null) {
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = File(p.join(tempDir.path, p.basename(params.xFile.path)));
-    await tempFile.writeAsBytes(bytes, flush: true);
-    return ProcessPhotoResult(filePath: tempFile.path, isTempFile: true);
-  }
+  // 2. Re-encode as JPEG with high quality, but do NOT downscale.
+  final processedBytes = img.encodeJpg(processedImage, quality: 95);
 
-  return ProcessPhotoResult(filePath: params.xFile.path, isTempFile: false);
+  // 3. Save to a new temporary file to avoid overwriting the original.
+  final tempDir = await getTemporaryDirectory();
+  final tempFile = File(p.join(tempDir.path, p.basename(params.xFile.path)));
+  await tempFile.writeAsBytes(processedBytes, flush: true);
+
+  return ProcessPhotoResult(filePath: tempFile.path, isTempFile: true);
 }
 
 // Helper class to pass arguments to the zip creation isolate

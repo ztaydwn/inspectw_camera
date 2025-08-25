@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
@@ -18,6 +19,27 @@ import 'camera_screen.dart';
 import '../constants.dart';
 import 'search_explorer_screen.dart';
 
+/// Isolate function to find all existing photo files for a project.
+Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
+  final token = args['token'] as RootIsolateToken;
+  final photos = args['photos'] as List<PhotoEntry>;
+
+  // Initialize platform channel communication for this isolate.
+  BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+
+  final storage = StorageService();
+  // StorageService uses a singleton pattern, init() is safe to call.
+  await storage.init();
+  final paths = <String>[];
+  for (final photo in photos) {
+    final f = await storage.dcimFileFromRelativePath(photo.relativePath);
+    if (f != null && await f.exists()) {
+      paths.add(f.path);
+    }
+  }
+  return paths;
+}
+
 class ProjectScreen extends StatefulWidget {
   final String project;
   const ProjectScreen({super.key, required this.project});
@@ -30,6 +52,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
   late final StorageService storage;
   late final MetadataService meta;
   bool _isExporting = false;
+  bool _isUploading = false;
 
   @override
   void didChangeDependencies() {
@@ -200,33 +223,74 @@ class _ProjectScreenState extends State<ProjectScreen> {
   }
 
   Future<void> _uploadToDrive() async {
-    final project = widget.project;
-    final baseDir = Directory('/storage/emulated/0/InspectW/$project');
+    setState(() => _isUploading = true);
+    try {
+      debugPrint('📤 Iniciando subida al Drive...');
+      final project = widget.project;
 
-    final imageFiles = <File>[];
-    await for (var entity
-        in baseDir.list(recursive: true, followLinks: false)) {
-      if (entity is File && entity.path.toLowerCase().endsWith('.jpg')) {
-        imageFiles.add(entity);
+      // 1. Get photo metadata
+      final allPhotos = await meta.listPhotos(project);
+      if (allPhotos.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No hay fotos en este proyecto para subir.')));
+        }
+        return;
       }
-    }
 
-    final jsonFile = File('${baseDir.path}/metadata.json');
-    if (!await jsonFile.exists()) {
+      // 2. Resolve photo file paths in a separate isolate to avoid UI jank
+      final token = RootIsolateToken.instance;
+      if (token == null) {
+        debugPrint('Could not get RootIsolateToken');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Error interno al iniciar subida.')));
+        }
+        return;
+      }
+
+      final imagePaths = await compute(
+          _resolveFilePathsIsolate, {'token': token, 'photos': allPhotos});
+      final imageFiles = imagePaths.map((path) => File(path)).toList();
+
+      if (imageFiles.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No se encontraron los archivos de las fotos.')));
+        }
+        return;
+      }
+
+      // 3. Get metadata.json file
+      final jsonFile = storage.metadataFile(project);
+      if (!await jsonFile.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se encontró metadata.json')),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+
+      await uploadFilesToBackend(
+        imageFiles: imageFiles,
+        jsonFile: jsonFile,
+        projectName: project,
+        context: context,
+      );
+    } catch (e, s) {
+      debugPrint('Error en _uploadToDrive: $e\n$s');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se encontró metadata.json')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
-      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
     }
-    if (!mounted) return;
-    await uploadFilesToBackend(
-      imageFiles: imageFiles,
-      jsonFile: jsonFile,
-      projectName: project,
-      context: context,
-    );
   }
 
   @override
@@ -258,10 +322,20 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 )
               : IconButton(
                   onPressed: _exportProject, icon: const Icon(Icons.ios_share)),
-          IconButton(
-            icon: const Icon(Icons.cloud_upload),
-            onPressed: _uploadToDrive,
-          ),
+          if (_isUploading)
+            const Padding(
+              padding: EdgeInsets.only(right: 16.0),
+              child: Center(
+                  child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 3))),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.cloud_upload),
+              onPressed: _uploadToDrive,
+            ),
         ],
       ),
       body: FutureBuilder<List<String>>(
