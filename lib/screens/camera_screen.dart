@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
-import 'package:image/image.dart' as img;
 
 import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
@@ -84,19 +83,17 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _mapFocalLengths() async {
     availableFocalLengths.clear();
 
-    // 1. Obtener solo las cámaras traseras
     final backCameras = cameras
         .where((cam) => cam.lensDirection == CameraLensDirection.back)
         .toList();
     if (backCameras.isEmpty) return;
 
-    CameraDescription? mainCamera = backCameras.first;
+    CameraDescription? mainCamera;
     CameraDescription? ultraWideCamera;
     CameraDescription? telephotoCamera;
 
-    // 2. Asignar la cámara principal y buscar lentes especializadas en el resto
-    final otherCameras = backCameras.where((c) => c != mainCamera).toList();
-    for (final camera in otherCameras) {
+    // First, try to find specific lenses by name
+    for (final camera in backCameras) {
       final name = camera.name.toLowerCase();
       if (name.contains('ultra') && ultraWideCamera == null) {
         ultraWideCamera = camera;
@@ -105,10 +102,15 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     }
 
-    if (backCameras.length == 2 &&
-        ultraWideCamera == null &&
-        telephotoCamera == null) {
-      ultraWideCamera = otherCameras.first;
+    // Then, find a main camera that is not one of the special lenses
+    final remainingCameras = backCameras
+        .where((c) => c != ultraWideCamera && c != telephotoCamera)
+        .toList();
+    if (remainingCameras.isNotEmpty) {
+      mainCamera = remainingCameras.first;
+    } else if (backCameras.isNotEmpty) {
+      // Fallback if all cameras were identified as special for some reason
+      mainCamera = backCameras.first;
     }
 
     // 4. Construir la lista de distancias focales físicas disponibles
@@ -120,11 +122,13 @@ class _CameraScreenState extends State<CameraScreen> {
       ));
     }
 
-    availableFocalLengths.add(FocalLength(
-      value: 1.0,
-      label: '1x',
-      camera: mainCamera,
-    ));
+    if (mainCamera != null) {
+      availableFocalLengths.add(FocalLength(
+        value: 1.0,
+        label: '1x',
+        camera: mainCamera,
+      ));
+    }
 
     if (telephotoCamera != null) {
       availableFocalLengths.add(FocalLength(
@@ -259,16 +263,6 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       await cam.setFlashMode(_flashMode);
       final xFile = await cam.takePicture();
-
-      // --- START OF ADDED DEBUG CODE ---
-      final imageBytes = await xFile.readAsBytes();
-      final decodedImage = img.decodeImage(imageBytes);
-      if (decodedImage != null) {
-        debugPrint(
-            '[CAMERA DEBUG] Captured photo resolution: ${decodedImage.width}x${decodedImage.height}');
-      }
-      // --- END OF ADDED DEBUG CODE ---
-
       debugPrint('[Camera] temp: ${xFile.path}');
 
       final desc = await _askForDescription();
