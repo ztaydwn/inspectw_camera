@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
+import 'package:image/image.dart' as img;
 
 import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
@@ -258,6 +259,16 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       await cam.setFlashMode(_flashMode);
       final xFile = await cam.takePicture();
+
+      // --- START OF ADDED DEBUG CODE ---
+      final imageBytes = await xFile.readAsBytes();
+      final decodedImage = img.decodeImage(imageBytes);
+      if (decodedImage != null) {
+        debugPrint(
+            '[CAMERA DEBUG] Captured photo resolution: ${decodedImage.width}x${decodedImage.height}');
+      }
+      // --- END OF ADDED DEBUG CODE ---
+
       debugPrint('[Camera] temp: ${xFile.path}');
 
       final desc = await _askForDescription();
