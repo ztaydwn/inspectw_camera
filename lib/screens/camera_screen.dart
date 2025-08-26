@@ -1,4 +1,4 @@
-// lib/screens/camera_screen.dart — v10 (with focal length support)
+// lib/screens/camera_screen.dart — v11 (background save)
 import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
@@ -15,6 +15,45 @@ import '../constants.dart';
 
 enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
 
+// Helper function to be executed in an isolate
+Future<SavePhotoResult?> _savePhotoIsolate(SavePhotoParams params) async {
+  // This now includes file processing AND saving to media store
+  final processed = await processPhotoIsolate(params);
+  if (processed == null) return null;
+
+  await MediaStore.ensureInitialized();
+  MediaStore.appFolder = kAppFolder;
+  final mediaStore = MediaStore();
+  final saveInfo = await mediaStore.saveFile(
+    tempFilePath: processed.filePath,
+    dirType: DirType.photo,
+    dirName: DirName.dcim,
+    relativePath: '${params.project}/${params.location}',
+  );
+
+  // Clean up temp file
+  if (processed.isTempFile) {
+    try {
+      final tempFile = File(processed.filePath);
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (e) {
+      debugPrint('[Isolate] Failed to delete temp file: $e');
+    }
+  }
+
+  if (saveInfo == null || !saveInfo.isSuccessful) {
+    return null;
+  }
+
+  return SavePhotoResult(
+    fileName: saveInfo.name,
+    relativePath: saveInfo.uri.path,
+    description: params.description, // Pass description through
+  );
+}
+
 class CameraScreen extends StatefulWidget {
   final String project;
   final String location;
@@ -28,13 +67,14 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   List<CameraDescription> cameras = [];
-
   ResolutionPreset preset = ResolutionPreset.max;
   FlashMode _flashMode = FlashMode.off;
   double zoom = 1.0, minZoom = 1.0, maxZoom = 4.0;
   int selectedBackIndex = 0;
   AspectOpt aspect = AspectOpt.sensor;
-  bool _isTakingPhoto = false;
+
+  // --- UI State for background saving ---
+  final ValueNotifier<int> _savingCount = ValueNotifier(0);
 
   @override
   void initState() {
@@ -45,17 +85,13 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initializeCamera() async {
     cameras = await availableCameras();
-    // Prefer a back camera when available
-    final backIndex =
-        cameras.indexWhere((c) => c.lensDirection == CameraLensDirection.back);
-    selectedBackIndex =
-        backIndex >= 0 ? backIndex : (cameras.isNotEmpty ? 0 : 0);
     await _startController();
   }
 
   @override
   void dispose() {
     controller?.dispose();
+    _savingCount.dispose();
     SystemChrome.setPreferredOrientations(
         DeviceOrientation.values); // restaurar
     super.dispose();
@@ -99,7 +135,6 @@ class _CameraScreenState extends State<CameraScreen> {
       minZoom = await cam.getMinZoomLevel();
       maxZoom = await cam.getMaxZoomLevel();
 
-      // Inicializar zoom al mínimo (o mantener valor actual si ya válido)
       zoom = zoom.clamp(minZoom, maxZoom);
       await cam.setZoomLevel(zoom);
     } on CameraException catch (e) {
@@ -111,28 +146,25 @@ class _CameraScreenState extends State<CameraScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _takePhoto() async {
-    if (_isTakingPhoto) return;
+  void _takePhoto() async {
     final cam = controller;
-    if (cam == null || !cam.value.isInitialized) return;
-
-    setState(() => _isTakingPhoto = true);
+    if (cam == null || !cam.value.isInitialized || _savingCount.value > 5) {
+      if (_savingCount.value > 5) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Espere a que se guarden las fotos pendientes.')));
+      }
+      return;
+    }
 
     try {
-      await cam.setFlashMode(_flashMode);
       final xFile = await cam.takePicture();
       debugPrint('[Camera] temp: ${xFile.path}');
 
       final desc = await _askForDescription();
       if (desc == null) return; // User cancelled
 
-      final result = await _savePhoto(xFile, desc);
-      if (result == null) return; // Save failed
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Foto guardada: ${result.fileName}')));
-      }
+      // --- Fire and Forget Save ---
+      _savePhoto(xFile, desc);
     } on CameraException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -143,12 +175,11 @@ class _CameraScreenState extends State<CameraScreen> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Error inesperado: $e')));
       }
-    } finally {
-      if (mounted) setState(() => _isTakingPhoto = false);
     }
   }
 
   Future<String?> _askForDescription() async {
+    // (This function remains the same as before)
     // 1. Mostrar lista de grupos principales
     final selectedGroup = await showModalBottomSheet<String?>(
       context: context,
@@ -341,86 +372,59 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<SavePhotoResult?> _savePhoto(XFile xFile, String description) async {
-    try {
-      final token = RootIsolateToken.instance!;
-      final params = SavePhotoParams(
-        xFile: xFile,
-        description: description,
-        project: widget.project,
-        location: widget.location,
-        aspect: _aspectToDouble(aspect),
-        token: token,
-      );
+  void _savePhoto(XFile xFile, String description) {
+    _savingCount.value++;
+    final params = SavePhotoParams(
+      xFile: xFile,
+      description: description,
+      project: widget.project,
+      location: widget.location,
+      aspect: _aspectToDouble(aspect),
+      token: RootIsolateToken.instance!,
+    );
 
-      // Process image data off the main isolate
-      final processed = await compute(processPhotoIsolate, params);
-
-      if (processed == null) {
+    compute(_savePhotoIsolate, params).then((result) {
+      if (result == null) {
+        debugPrint('[Camera] Isolate failed to save photo');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Error: No se pudo procesar la foto.')));
+              content: Text('Error: No se pudo guardar la foto.')));
         }
-        return null;
+        return;
       }
 
-      await MediaStore.ensureInitialized();
-      MediaStore.appFolder = kAppFolder;
-      final mediaStore = MediaStore();
-      final saveInfo = await mediaStore.saveFile(
-        tempFilePath: processed.filePath,
-        dirType: DirType.photo,
-        dirName: DirName.dcim,
-        relativePath: '${widget.project}/${widget.location}',
-      );
+      // --- Back on Main Thread ---
+      // We can now safely update metadata without depending on the camera screen's context
+      // as much. We grab the provider, but don't rely on the context for much else.
+      if (mounted) {
+        final metadataService = context.read<MetadataService>();
+        metadataService.addPhoto(
+          project: widget.project,
+          location: widget.location,
+          fileName: result.fileName,
+          relativePath: result.relativePath,
+          description: result.description, // Use description from result
+          takenAt: DateTime.now(),
+        );
 
-      if (saveInfo == null || !saveInfo.isSuccessful) {
+        debugPrint('[Camera] Photo saved: ${result.fileName}');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content:
-                  Text('Error: No se pudo guardar la foto en la galería.')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              duration: const Duration(seconds: 2),
+              content: Text('Foto guardada: ${result.fileName}')));
         }
-        if (processed.isTempFile) {
-          try {
-            await File(processed.filePath).delete();
-          } catch (_) {}
-        }
-        return null;
       }
-
-      final result = SavePhotoResult(
-          fileName: saveInfo.name, relativePath: saveInfo.uri.path);
-
-      if (!mounted) return null;
-      await context.read<MetadataService>().addPhoto(
-            project: widget.project,
-            location: widget.location,
-            fileName: result.fileName,
-            relativePath: result.relativePath,
-            description: description,
-            takenAt: DateTime.now(),
-          );
-
-      if (processed.isTempFile) {
-        try {
-          if (processed.filePath.isNotEmpty) {
-            final src = File(processed.filePath);
-            if (await src.exists()) {
-              await src.delete();
-            }
-          }
-        } catch (_) {}
-      }
-
-      return result;
-    } catch (e) {
+    }).catchError((e) {
       debugPrint('[Camera] Error saving photo: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al guardar la foto: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
       }
-      return null;
-    }
+    }).whenComplete(() {
+      if (mounted) {
+        _savingCount.value--;
+      }
+    });
   }
 
   @override
@@ -430,15 +434,36 @@ class _CameraScreenState extends State<CameraScreen> {
       appBar: AppBar(
         title: Text('${widget.project} / ${widget.location}'),
         actions: [
+          // --- Saving Indicator ---
+          ValueListenableBuilder<int>(
+            valueListenable: _savingCount,
+            builder: (context, count, child) {
+              if (count == 0) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('$count'),
+                  ],
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.cameraswitch),
             tooltip: 'Cambiar cámara',
             onPressed: () async {
               if (cameras.isEmpty) return;
-              // Cicla a través de todas las cámaras disponibles
               selectedBackIndex = (selectedBackIndex + 1) % cameras.length;
               await _startController();
-              setState(() {}); // Actualiza la UI si es necesario
+              setState(() {});
             },
           ),
           IconButton(
@@ -479,7 +504,6 @@ class _CameraScreenState extends State<CameraScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
-                // Camera preview
                 Builder(builder: (_) {
                   final ps = cam.value.previewSize;
                   final ar = ps != null ? ps.height / ps.width : (4 / 3);
@@ -497,7 +521,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Zoom slider (solo cuando no es la distancia focal base)
                     if (maxZoom != minZoom) ...[
                       Row(
                         children: [
@@ -519,10 +542,8 @@ class _CameraScreenState extends State<CameraScreen> {
                       const SizedBox(height: 8),
                     ],
                     FloatingActionButton.large(
-                      onPressed: _isTakingPhoto ? null : _takePhoto,
-                      child: _isTakingPhoto
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Icon(Icons.camera_alt),
+                      onPressed: _takePhoto,
+                      child: const Icon(Icons.camera_alt),
                     ),
                   ],
                 ),

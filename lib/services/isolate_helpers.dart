@@ -33,8 +33,12 @@ class SavePhotoParams {
 class SavePhotoResult {
   final String fileName;
   final String relativePath;
+  final String description;
 
-  SavePhotoResult({required this.fileName, required this.relativePath});
+  SavePhotoResult(
+      {required this.fileName,
+      required this.relativePath,
+      required this.description});
 }
 
 // Result from processing a photo in an isolate
