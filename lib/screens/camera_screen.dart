@@ -15,23 +15,6 @@ import '../constants.dart';
 
 enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
 
-// Clase para mapear distancias focales
-class FocalLength {
-  final double value; // Equivalente en 35mm
-  final String label;
-  final CameraDescription? camera; // null si es zoom digital
-  final double? digitalZoom; // Factor de zoom digital si aplica
-
-  const FocalLength({
-    required this.value,
-    required this.label,
-    this.camera,
-    this.digitalZoom,
-  });
-
-  bool get isDigitalZoom => camera == null;
-}
-
 class CameraScreen extends StatefulWidget {
   final String project;
   final String location;
@@ -45,8 +28,6 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   List<CameraDescription> cameras = [];
-  List<FocalLength> availableFocalLengths = [];
-  FocalLength? selectedFocalLength;
 
   ResolutionPreset preset = ResolutionPreset.max;
   FlashMode _flashMode = FlashMode.off;
@@ -54,9 +35,6 @@ class _CameraScreenState extends State<CameraScreen> {
   int selectedBackIndex = 0;
   AspectOpt aspect = AspectOpt.sensor;
   bool _isTakingPhoto = false;
-
-  // Distancias focales objetivo (equivalente 35mm)
-  static const List<double> targetFocalLengths = [0.6, 1.0, 2.0];
 
   @override
   void initState() {
@@ -67,7 +45,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _initializeCamera() async {
     cameras = await availableCameras();
-    await _mapFocalLengths();
+    // Prefer a back camera when available
+    final backIndex =
+        cameras.indexWhere((c) => c.lensDirection == CameraLensDirection.back);
+    selectedBackIndex =
+        backIndex >= 0 ? backIndex : (cameras.isNotEmpty ? 0 : 0);
     await _startController();
   }
 
@@ -77,122 +59,6 @@ class _CameraScreenState extends State<CameraScreen> {
     SystemChrome.setPreferredOrientations(
         DeviceOrientation.values); // restaurar
     super.dispose();
-  }
-
-  // ASEGÚRATE DE QUE ESTA FUNCIÓN ESTÉ AQUÍ
-  Future<void> _mapFocalLengths() async {
-    availableFocalLengths.clear();
-
-    final backCameras = cameras
-        .where((cam) => cam.lensDirection == CameraLensDirection.back)
-        .toList();
-    if (backCameras.isEmpty) return;
-
-    CameraDescription? mainCamera;
-    CameraDescription? ultraWideCamera;
-    CameraDescription? telephotoCamera;
-
-    // First, try to find specific lenses by name
-    for (final camera in backCameras) {
-      final name = camera.name.toLowerCase();
-      if (name.contains('ultra') && ultraWideCamera == null) {
-        ultraWideCamera = camera;
-      } else if (name.contains('tele') && telephotoCamera == null) {
-        telephotoCamera = camera;
-      }
-    }
-
-    // Then, find a main camera that is not one of the special lenses
-    final remainingCameras = backCameras
-        .where((c) => c != ultraWideCamera && c != telephotoCamera)
-        .toList();
-    if (remainingCameras.isNotEmpty) {
-      mainCamera = remainingCameras.first;
-    } else if (backCameras.isNotEmpty) {
-      // Fallback if all cameras were identified as special for some reason
-      mainCamera = backCameras.first;
-    }
-
-    // 4. Construir la lista de distancias focales físicas disponibles
-    if (ultraWideCamera != null) {
-      availableFocalLengths.add(FocalLength(
-        value: 0.6,
-        label: '0.6x',
-        camera: ultraWideCamera,
-      ));
-    }
-
-    if (mainCamera != null) {
-      availableFocalLengths.add(FocalLength(
-        value: 1.0,
-        label: '1x',
-        camera: mainCamera,
-      ));
-    }
-
-    if (telephotoCamera != null) {
-      availableFocalLengths.add(FocalLength(
-        value: 2.0,
-        label: '2x',
-        camera: telephotoCamera,
-      ));
-    }
-
-    // 5. Para cualquier objetivo faltante, crear un fallback con zoom digital
-    for (final target in targetFocalLengths) {
-      // <-- Aquí se usa la variable
-      bool hasPhysicalCamera = availableFocalLengths
-          .any((fl) => fl.value == target && !fl.isDigitalZoom);
-      if (!hasPhysicalCamera) {
-        double digitalZoomFactor = target / 1.0;
-        availableFocalLengths.add(FocalLength(
-          value: target,
-          label: '${target}x (Digital)',
-          camera: null,
-          digitalZoom: digitalZoomFactor,
-        ));
-      }
-    }
-
-    // 6. Ordenar y seleccionar la distancia focal inicial
-    availableFocalLengths.sort((a, b) => a.value.compareTo(b.value));
-    if (availableFocalLengths.isNotEmpty) {
-      selectedFocalLength = availableFocalLengths.firstWhere(
-          (fl) => fl.value == 1.0,
-          orElse: () => availableFocalLengths.first);
-    }
-
-    debugPrint(
-        '[Camera] Mapped focal lengths: ${availableFocalLengths.map((fl) => '${fl.label} (${fl.camera?.name ?? "Digital"})').join(", ")}');
-  }
-
-  Future<void> _switchToFocalLength(FocalLength focalLength) async {
-    if (selectedFocalLength == focalLength) return;
-
-    setState(() => selectedFocalLength = focalLength);
-
-    if (focalLength.isDigitalZoom) {
-      // Usar zoom digital en la cámara actual
-      if (focalLength.digitalZoom != null) {
-        final zoomLevel =
-            (focalLength.digitalZoom! * minZoom).clamp(minZoom, maxZoom);
-        await controller?.setZoomLevel(zoomLevel);
-        setState(() => zoom = zoomLevel);
-      }
-    } else {
-      // Cambiar a cámara física diferente
-      if (focalLength.camera != null) {
-        await controller?.dispose();
-
-        // Encontrar el índice de la nueva cámara
-        selectedBackIndex = cameras.indexOf(focalLength.camera!);
-
-        await _startController();
-
-        // Resetear zoom al cambiar de cámara
-        setState(() => zoom = minZoom);
-      }
-    }
   }
 
   Future<void> _toggleFlash() async {
@@ -233,17 +99,9 @@ class _CameraScreenState extends State<CameraScreen> {
       minZoom = await cam.getMinZoomLevel();
       maxZoom = await cam.getMaxZoomLevel();
 
-      // Si estamos usando una cámara para distancia focal específica,
-      // ajustar el zoom inicial si es necesario
-      if (selectedFocalLength?.isDigitalZoom == true &&
-          selectedFocalLength?.digitalZoom != null) {
-        final zoomLevel = (selectedFocalLength!.digitalZoom! * minZoom)
-            .clamp(minZoom, maxZoom);
-        await cam.setZoomLevel(zoomLevel);
-        zoom = zoomLevel;
-      } else {
-        zoom = minZoom;
-      }
+      // Inicializar zoom al mínimo (o mantener valor actual si ya válido)
+      zoom = zoom.clamp(minZoom, maxZoom);
+      await cam.setZoomLevel(zoom);
     } on CameraException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -565,42 +423,6 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Widget _buildFocalLengthSelector() {
-    if (availableFocalLengths.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: availableFocalLengths.map((fl) {
-          final isSelected = selectedFocalLength == fl;
-          return GestureDetector(
-            onTap: () => _switchToFocalLength(fl),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                fl.label,
-                style: TextStyle(
-                  color: isSelected ? Colors.black : Colors.white,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final cam = controller;
@@ -608,6 +430,17 @@ class _CameraScreenState extends State<CameraScreen> {
       appBar: AppBar(
         title: Text('${widget.project} / ${widget.location}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.cameraswitch),
+            tooltip: 'Cambiar cámara',
+            onPressed: () async {
+              if (cameras.isEmpty) return;
+              // Cicla a través de todas las cámaras disponibles
+              selectedBackIndex = (selectedBackIndex + 1) % cameras.length;
+              await _startController();
+              setState(() {}); // Actualiza la UI si es necesario
+            },
+          ),
           IconButton(
             icon: Icon(_flashMode == FlashMode.torch
                 ? Icons.flash_on
@@ -654,13 +487,6 @@ class _CameraScreenState extends State<CameraScreen> {
                       child: AspectRatio(
                           aspectRatio: ar, child: CameraPreview(cam)));
                 }),
-                // Focal length selector
-                Positioned(
-                  top: 16,
-                  left: 0,
-                  right: 0,
-                  child: Center(child: _buildFocalLengthSelector()),
-                ),
               ],
             ),
       bottomNavigationBar: cam == null || !cam.value.isInitialized
@@ -672,8 +498,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Zoom slider (solo cuando no es la distancia focal base)
-                    if (selectedFocalLength?.isDigitalZoom != true ||
-                        zoom != minZoom) ...[
+                    if (maxZoom != minZoom) ...[
                       Row(
                         children: [
                           const Icon(Icons.zoom_out, color: Colors.white70),
