@@ -18,7 +18,7 @@ class InspectWApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<MetadataService>.value(value: meta),
+        ChangeNotifierProvider<MetadataService>.value(value: meta),
       ],
       child: MaterialApp(
         title: 'InspectW Camera',

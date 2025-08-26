@@ -1,13 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'package:archive/archive_io.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
+import 'package:media_store_plus/media_store_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../constants.dart';
 import '../models.dart';
 
 // Helper class to pass arguments to the photo saving isolate
@@ -92,6 +95,45 @@ Future<ProcessPhotoResult?> processPhotoIsolate(SavePhotoParams params) async {
   await tempFile.writeAsBytes(processedBytes, flush: true);
 
   return ProcessPhotoResult(filePath: tempFile.path, isTempFile: true);
+}
+
+/// ISOLATE: Top-level function to process and save a photo.
+Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
+  // This now includes file processing AND saving to media store
+  final processed = await processPhotoIsolate(params);
+  if (processed == null) return null;
+
+  await MediaStore.ensureInitialized();
+  MediaStore.appFolder = kAppFolder;
+  final mediaStore = MediaStore();
+  final saveInfo = await mediaStore.saveFile(
+    tempFilePath: processed.filePath,
+    dirType: DirType.photo,
+    dirName: DirName.dcim,
+    relativePath: '${params.project}/${params.location}',
+  );
+
+  // Clean up temp file
+  if (processed.isTempFile) {
+    try {
+      final tempFile = File(processed.filePath);
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (e) {
+      debugPrint('[Isolate] Failed to delete temp file: $e');
+    }
+  }
+
+  if (saveInfo == null || !saveInfo.isSuccessful) {
+    return null;
+  }
+
+  return SavePhotoResult(
+    fileName: saveInfo.name,
+    relativePath: saveInfo.uri.path,
+    description: params.description, // Pass description through
+  );
 }
 
 // Helper class to pass arguments to the zip creation isolate

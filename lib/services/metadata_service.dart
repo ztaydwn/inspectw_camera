@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models.dart';
@@ -8,7 +10,7 @@ import 'isolate_helpers.dart';
 import 'photo_metadata.dart';
 import 'storage_service.dart';
 
-class MetadataService {
+class MetadataService with ChangeNotifier {
   final _uuid = const Uuid();
   final _storage = StorageService();
   bool _inited = false;
@@ -18,10 +20,56 @@ class MetadataService {
   // project -> set of suggestions
   final Map<String, Map<String, int>> _suggestions = {};
 
+  // --- Background Saving State ---
+  int _savingCount = 0;
+  int get savingCount => _savingCount;
+
   Future<void> init() async {
     if (_inited) return;
     await _storage.init();
     _inited = true;
+  }
+
+  // --- New method to handle background photo saving ---
+  void saveNewPhoto({
+    required XFile xFile,
+    required String description,
+    required String project,
+    required String location,
+    double? aspect,
+  }) {
+    _savingCount++;
+    notifyListeners();
+
+    final params = SavePhotoParams(
+      xFile: xFile,
+      description: description,
+      project: project,
+      location: location,
+      aspect: aspect,
+      token: RootIsolateToken.instance!,
+    );
+
+    compute(savePhotoIsolate, params).then((result) {
+      if (result == null) {
+        debugPrint('[MetadataService] Isolate failed to save photo');
+        return;
+      }
+      // Back on the main thread, add the photo to our internal cache
+      addPhoto(
+        project: project,
+        location: location,
+        fileName: result.fileName,
+        relativePath: result.relativePath,
+        description: result.description,
+        takenAt: DateTime.now(),
+      );
+    }).catchError((e) {
+      debugPrint('[MetadataService] Error saving photo: $e');
+    }).whenComplete(() {
+      _savingCount--;
+      notifyListeners();
+    });
   }
 
   Future<List<String>> listProjects() async {

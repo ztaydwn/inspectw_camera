@@ -1,58 +1,14 @@
-// lib/screens/camera_screen.dart — v11 (background save)
 import 'dart:async';
-import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:media_store_plus/media_store_plus.dart';
 
-import '../services/isolate_helpers.dart';
 import '../services/metadata_service.dart';
 import '../widgets/description_input.dart';
 import '../constants.dart';
 
 enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
-
-// Helper function to be executed in an isolate
-Future<SavePhotoResult?> _savePhotoIsolate(SavePhotoParams params) async {
-  // This now includes file processing AND saving to media store
-  final processed = await processPhotoIsolate(params);
-  if (processed == null) return null;
-
-  await MediaStore.ensureInitialized();
-  MediaStore.appFolder = kAppFolder;
-  final mediaStore = MediaStore();
-  final saveInfo = await mediaStore.saveFile(
-    tempFilePath: processed.filePath,
-    dirType: DirType.photo,
-    dirName: DirName.dcim,
-    relativePath: '${params.project}/${params.location}',
-  );
-
-  // Clean up temp file
-  if (processed.isTempFile) {
-    try {
-      final tempFile = File(processed.filePath);
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-    } catch (e) {
-      debugPrint('[Isolate] Failed to delete temp file: $e');
-    }
-  }
-
-  if (saveInfo == null || !saveInfo.isSuccessful) {
-    return null;
-  }
-
-  return SavePhotoResult(
-    fileName: saveInfo.name,
-    relativePath: saveInfo.uri.path,
-    description: params.description, // Pass description through
-  );
-}
 
 class CameraScreen extends StatefulWidget {
   final String project;
@@ -73,9 +29,6 @@ class _CameraScreenState extends State<CameraScreen> {
   int selectedBackIndex = 0;
   AspectOpt aspect = AspectOpt.sensor;
 
-  // --- UI State for background saving ---
-  final ValueNotifier<int> _savingCount = ValueNotifier(0);
-
   @override
   void initState() {
     super.initState();
@@ -91,7 +44,6 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void dispose() {
     controller?.dispose();
-    _savingCount.dispose();
     SystemChrome.setPreferredOrientations(
         DeviceOrientation.values); // restaurar
     super.dispose();
@@ -148,10 +100,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _takePhoto() async {
     final cam = controller;
-    if (cam == null || !cam.value.isInitialized || _savingCount.value > 5) {
-      if (_savingCount.value > 5) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Espere a que se guarden las fotos pendientes.')));
+    // Use context.read here because we are in a button handler and not rebuilding
+    final metadataService = context.read<MetadataService>();
+
+    if (cam == null ||
+        !cam.value.isInitialized ||
+        metadataService.savingCount > 5) {
+      if (metadataService.savingCount > 5) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Espere a que se guarden las fotos pendientes.')));
+        }
       }
       return;
     }
@@ -163,8 +122,21 @@ class _CameraScreenState extends State<CameraScreen> {
       final desc = await _askForDescription();
       if (desc == null) return; // User cancelled
 
-      // --- Fire and Forget Save ---
-      _savePhoto(xFile, desc);
+      // --- Delegate saving to the service ---
+      metadataService.saveNewPhoto(
+        xFile: xFile,
+        description: desc,
+        project: widget.project,
+        location: widget.location,
+        aspect: _aspectToDouble(aspect),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Foto capturada. Guardando en segundo plano...'),
+          duration: Duration(seconds: 2),
+        ));
+      }
     } on CameraException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -372,90 +344,33 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _savePhoto(XFile xFile, String description) {
-    _savingCount.value++;
-    final params = SavePhotoParams(
-      xFile: xFile,
-      description: description,
-      project: widget.project,
-      location: widget.location,
-      aspect: _aspectToDouble(aspect),
-      token: RootIsolateToken.instance!,
-    );
-
-    compute(_savePhotoIsolate, params).then((result) {
-      if (result == null) {
-        debugPrint('[Camera] Isolate failed to save photo');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Error: No se pudo guardar la foto.')));
-        }
-        return;
-      }
-
-      // --- Back on Main Thread ---
-      // We can now safely update metadata without depending on the camera screen's context
-      // as much. We grab the provider, but don't rely on the context for much else.
-      if (mounted) {
-        final metadataService = context.read<MetadataService>();
-        metadataService.addPhoto(
-          project: widget.project,
-          location: widget.location,
-          fileName: result.fileName,
-          relativePath: result.relativePath,
-          description: result.description, // Use description from result
-          takenAt: DateTime.now(),
-        );
-
-        debugPrint('[Camera] Photo saved: ${result.fileName}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              duration: const Duration(seconds: 2),
-              content: Text('Foto guardada: ${result.fileName}')));
-        }
-      }
-    }).catchError((e) {
-      debugPrint('[Camera] Error saving photo: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
-      }
-    }).whenComplete(() {
-      if (mounted) {
-        _savingCount.value--;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final cam = controller;
+    // Listen to the saving count from the service
+    final savingCount = context.watch<MetadataService>().savingCount;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.project} / ${widget.location}'),
         actions: [
           // --- Saving Indicator ---
-          ValueListenableBuilder<int>(
-            valueListenable: _savingCount,
-            builder: (context, count, child) {
-              if (count == 0) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('$count'),
-                  ],
-                ),
-              );
-            },
-          ),
+          if (savingCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$savingCount'),
+                ],
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.cameraswitch),
             tooltip: 'Cambiar cámara',
