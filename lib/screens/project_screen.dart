@@ -53,6 +53,47 @@ class _ProjectScreenState extends State<ProjectScreen> {
   late final MetadataService meta;
   bool _isExporting = false;
   bool _isUploading = false;
+  bool _isCopyingFiles = false;
+
+  /// FUNCION PARA COPIAR ARCHIVOS DE DATOS
+
+  Future<void> _copyDataFiles() async {
+    if (_isCopyingFiles) return;
+    setState(() => _isCopyingFiles = true);
+
+    try {
+      // Es una buena práctica verificar los permisos de almacenamiento en Android
+      if (Platform.isAndroid) {
+        var status = await Permission.storage.request();
+        if (!status.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Permiso de almacenamiento denegado.')));
+          }
+          return;
+        }
+      }
+
+      final savedPath =
+          await storage.exportProjectDataToDownloads(widget.project);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Archivos copiados a: $savedPath')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error al copiar archivos de datos: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al copiar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCopyingFiles = false);
+      }
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -335,6 +376,23 @@ class _ProjectScreenState extends State<ProjectScreen> {
             IconButton(
               icon: const Icon(Icons.cloud_upload),
               onPressed: _uploadToDrive,
+            ),
+          if (_isCopyingFiles)
+
+            ///BOTON PARA ARCHIVOS DE DATOS
+            const Padding(
+              padding: EdgeInsets.only(right: 16.0),
+              child: Center(
+                  child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 3))),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.copy_all_outlined),
+              onPressed: _copyDataFiles,
+              tooltip: 'Copiar archivos de datos',
             ),
         ],
       ),
