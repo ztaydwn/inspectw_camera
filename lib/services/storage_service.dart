@@ -74,15 +74,26 @@ class StorageService {
   }
 
   /// Devuelve el archivo en DCIM a partir de la ruta relativa guardada en metadatos.
-  /// This now expects the relativePath to be the .path of a content URI.
+  /// Esta función ahora soporta tanto rutas de archivo directas (antiguas) como
+  /// rutas de content URI (nuevas) para retrocompatibilidad.
   Future<File?> dcimFileFromRelativePath(String relativePath) async {
     if (!Platform.isAndroid) {
-      // For non-Android platforms, assume relativePath is a direct file path
-      // or handle as appropriate for the platform.
-      // For now, returning null as this is an Android-specific issue.
       return null;
     }
 
+    // --- Lógica de Retrocompatibilidad ---
+    // Si la ruta parece una ruta de archivo directa y antigua, úsala directamente.
+    if (relativePath.startsWith('/storage/')) {
+      final file = File(relativePath);
+      if (await file.exists()) {
+        return file;
+      }
+      // Si el archivo no existe en la ruta antigua, no se puede hacer más.
+      return null;
+    }
+
+    // --- Lógica Nueva (Content URI) ---
+    // Si no es una ruta antigua, se asume que es el formato nuevo de content URI.
     try {
       await MediaStore.ensureInitialized();
     } catch (e) {
@@ -90,22 +101,20 @@ class StorageService {
       return null;
     }
 
-    // Reconstruct the content URI from the stored relativePath.
-    // The relativePath is actually the .path segment of the content URI.
-    // Example: relativePath = '/external_primary/images/media/1000090241'
-    // Full URI should be: 'content://media/external_primary/images/media/1000090241'
+    // Reconstruye el content URI a partir de la ruta relativa guardada.
     final Uri contentUri = Uri.parse('content://media$relativePath');
 
     try {
       final mediaStore = MediaStore();
-      // Corrected method call: use getFile instead of getFileFromUri
       final String? filePath =
           await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
-      if (filePath == null) return null;
-      final File file = File(filePath);
-      return file;
+
+      if (filePath == null) {
+        debugPrint('Could not resolve file path from URI: $contentUri');
+        return null;
+      }
+      return File(filePath);
     } catch (e) {
-      // Use a logger or debugPrint instead of print
       debugPrint('Error resolving file from URI: $e');
       return null;
     }
@@ -133,62 +142,35 @@ class StorageService {
     }
   }
 
-  /// Exporta los archivos de datos del proyecto y, opcionalmente, un reporte de texto.
-  /// Guarda los archivos en la carpeta pública de "Descargas" del dispositivo.
-  Future<List<String>> exportProjectDataToDownloads({
+  /// Exporta un reporte de texto a la carpeta pública de "Descargas" del dispositivo.
+  /// Retorna el nombre del archivo guardado.
+  Future<String> exportReportToDownloads({
     required String project,
-    String? reportContent, // Parámetro opcional para el reporte
+    required String reportContent,
   }) async {
     await init();
 
-    final metaFile = metadataFile(project);
-    final descFile = descriptionsFile(project);
-    final savedFileNames = <String>[];
+    if (reportContent.isEmpty) {
+      throw Exception('El contenido del reporte está vacío.');
+    }
 
     final mediaStore = MediaStore();
     await MediaStore.ensureInitialized();
     MediaStore.appFolder = kAppFolder;
 
-    // Helper para guardar un archivo físico usando MediaStore
-    Future<void> save(File file) async {
-      if (await file.exists()) {
-        await mediaStore.saveFile(
-          tempFilePath: file.path,
-          dirType: DirType.download,
-          dirName: DirName.download,
-          // La subcarpeta es solo el nombre del proyecto
-          relativePath: project,
-        );
-        savedFileNames.add(p.basename(file.path));
-        debugPrint('Saved ${file.path} via MediaStore');
-      }
-    }
+    final tempDir = await getTemporaryDirectory();
+    final fileName = '${project}_report.txt';
+    final tempReportFile = File(p.join(tempDir.path, fileName));
+    await tempReportFile.writeAsString(reportContent);
 
-    // Guardar los archivos JSON existentes
-    await save(metaFile);
-    await save(descFile);
+    await mediaStore.saveFile(
+      tempFilePath: tempReportFile.path,
+      dirType: DirType.download,
+      dirName: DirName.download,
+      relativePath: project,
+    );
 
-    // Guardar el contenido del reporte si se proporcionó
-    if (reportContent != null && reportContent.isNotEmpty) {
-      // MediaStore necesita un archivo físico, así que creamos uno temporal
-      final tempDir = await getTemporaryDirectory();
-      final tempReportFile = File(p.join(tempDir.path, '${project}_report.txt'));
-      await tempReportFile.writeAsString(reportContent);
-
-      // Usamos el mismo helper para guardar el archivo de reporte temporal
-      await save(tempReportFile);
-
-      // NO es necesario borrar el archivo temporal. El plugin MediaStore
-      // lo MUEVE, no lo copia. Intentar borrarlo causa un error.
-      // El SO se encargará de limpiar la caché eventualmente.
-      // await tempReportFile.delete();
-    }
-
-    if (savedFileNames.isEmpty) {
-      throw Exception(
-          'No se encontraron archivos de datos para exportar en el proyecto "$project".');
-    }
-
-    return savedFileNames;
+    // MediaStore MUEVE el archivo, así que no necesitamos borrar el temporal.
+    return fileName;
   }
 }

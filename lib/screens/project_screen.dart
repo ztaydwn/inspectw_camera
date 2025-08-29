@@ -64,17 +64,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
       // 1. Generar el contenido del reporte de texto.
       final report = await meta.generateProjectReport(widget.project);
 
-      // 2. Llamar al método de exportación, pasándole el reporte.
-      final savedFiles = await storage.exportProjectDataToDownloads(
+      // 2. Llamar al método de exportación simplificado.
+      final savedFile = await storage.exportReportToDownloads(
         project: widget.project,
         reportContent: report,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  '${savedFiles.length} archivo(s) copiado(s) a Descargas')),
+          SnackBar(content: Text('Archivo $savedFile copiado a Descargas')),
         );
       }
     } catch (e) {
@@ -222,17 +220,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
         tempFilePath: zipPath,
         dirType: DirType.download,
         dirName: DirName.download,
-        relativePath: '$kAppFolder/${widget.project}',
+        relativePath: widget.project,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ZIP saved to Download/$kAppFolder')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('ZIP saved to Downloads/$kAppFolder')));
       }
     } catch (e) {
       debugPrint('[ZIP] Error saving to MediaStore: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save ZIP to Download: $e')));
+            SnackBar(content: Text('Failed to save ZIP to Downloads: $e')));
       }
     } finally {
       try {
