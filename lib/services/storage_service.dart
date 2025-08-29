@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter/foundation.dart'; // Add this import for debugPrint
+import '../constants.dart'; // Para kAppFolder
 
 class StorageService {
   static final StorageService _i = StorageService._();
@@ -135,50 +136,45 @@ class StorageService {
   /// Exporta los archivos de datos del proyecto (metadata.json, descriptions.json)
   /// a la carpeta pública de "Descargas" del dispositivo.
   /// Devuelve la ruta a la carpeta donde se guardaron los archivos.
-  Future<String> exportProjectDataToDownloads(String project) async {
-    await init(); // Asegura que el servicio esté inicializado
-
-    // 1. Encontrar el directorio público de Descargas
-    final Directory? downloadsDir = await getDownloadsDirectory();
-    if (downloadsDir == null) {
-      throw UnsupportedError('No se pudo acceder a la carpeta de Descargas.');
-    }
-
-    // 2. Definir una carpeta específica para las exportaciones de tu app
-    //    (puedes usar la constante kAppFolder que ya tienes)
-    final Directory exportDir =
-        Directory(p.join(downloadsDir.path, 'InspectW_Exports', project));
-
-    // 3. Crear la carpeta de destino si no existe
-    if (!await exportDir.exists()) {
-      await exportDir.create(recursive: true);
-    }
+  Future<List<String>> exportProjectDataToDownloads(String project) async {
+    await init();
 
     final metaFile = metadataFile(project);
     final descFile = descriptionsFile(project);
-    final copiedFiles = <String>[];
+    final savedFileNames = <String>[];
 
-    // 4. Copiar metadata.json
-    if (await metaFile.exists()) {
-      final destinationPath = p.join(exportDir.path, 'metadata.json');
-      await metaFile.copy(destinationPath);
-      copiedFiles.add(destinationPath);
-      debugPrint('Copied metadata to $destinationPath');
+    // 1. Inicializar MediaStore
+    final mediaStore = MediaStore();
+    await MediaStore.ensureInitialized();
+    // Asigna el nombre de la carpeta principal para tus exportaciones
+    MediaStore.appFolder = kAppFolder;
+
+    // 2. Helper para guardar un archivo usando MediaStore
+    Future<void> save(File file) async {
+      if (await file.exists()) {
+        // MediaStore toma el archivo de la ruta temporal (privada) de tu app
+        // y lo guarda correctamente en la carpeta pública de Descargas.
+        await mediaStore.saveFile(
+          tempFilePath: file.path,
+          dirType: DirType.download,
+          dirName: DirName.download,
+          // Crea una subcarpeta para el proyecto dentro de la carpeta de la app
+          relativePath: '$kAppFolder/$project',
+        );
+        savedFileNames.add(p.basename(file.path));
+        debugPrint('Saved ${file.path} via MediaStore');
+      }
     }
 
-    // 5. Copiar descriptions.json
-    if (await descFile.exists()) {
-      final destinationPath = p.join(exportDir.path, 'descriptions.json');
-      await descFile.copy(destinationPath);
-      copiedFiles.add(destinationPath);
-      debugPrint('Copied descriptions to $destinationPath');
-    }
+    // 3. Guardar ambos archivos
+    await save(metaFile);
+    await save(descFile);
 
-    if (copiedFiles.isEmpty) {
+    if (savedFileNames.isEmpty) {
       throw Exception(
           'No se encontraron archivos de datos para exportar en el proyecto "$project".');
     }
 
-    return exportDir.path;
+    return savedFileNames;
   }
 }

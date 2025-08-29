@@ -62,23 +62,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
     setState(() => _isCopyingFiles = true);
 
     try {
-      // Es una buena práctica verificar los permisos de almacenamiento en Android
-      if (Platform.isAndroid) {
-        var status = await Permission.storage.request();
-        if (!status.isGranted) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Permiso de almacenamiento denegado.')));
-          }
-          return;
-        }
-      }
-
-      final savedPath =
+      // Ya no es necesario pedir permisos aquí. MediaStore y la lógica
+      // de exportación de ZIP ya se encargan de los permisos necesarios.
+      final savedFiles =
           await storage.exportProjectDataToDownloads(widget.project);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Archivos copiados a: $savedPath')),
+          SnackBar(
+              content: Text(
+                  '${savedFiles.length} archivo(s) copiado(s) a Descargas')),
         );
       }
     } catch (e) {
