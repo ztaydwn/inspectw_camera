@@ -133,42 +133,56 @@ class StorageService {
     }
   }
 
-  /// Exporta los archivos de datos del proyecto (metadata.json, descriptions.json)
-  /// a la carpeta pública de "Descargas" del dispositivo.
-  /// Devuelve la ruta a la carpeta donde se guardaron los archivos.
-  Future<List<String>> exportProjectDataToDownloads(String project) async {
+  /// Exporta los archivos de datos del proyecto y, opcionalmente, un reporte de texto.
+  /// Guarda los archivos en la carpeta pública de "Descargas" del dispositivo.
+  Future<List<String>> exportProjectDataToDownloads({
+    required String project,
+    String? reportContent, // Parámetro opcional para el reporte
+  }) async {
     await init();
 
     final metaFile = metadataFile(project);
     final descFile = descriptionsFile(project);
     final savedFileNames = <String>[];
 
-    // 1. Inicializar MediaStore
     final mediaStore = MediaStore();
     await MediaStore.ensureInitialized();
-    // Asigna el nombre de la carpeta principal para tus exportaciones
     MediaStore.appFolder = kAppFolder;
 
-    // 2. Helper para guardar un archivo usando MediaStore
+    // Helper para guardar un archivo físico usando MediaStore
     Future<void> save(File file) async {
       if (await file.exists()) {
-        // MediaStore toma el archivo de la ruta temporal (privada) de tu app
-        // y lo guarda correctamente en la carpeta pública de Descargas.
         await mediaStore.saveFile(
           tempFilePath: file.path,
           dirType: DirType.download,
           dirName: DirName.download,
-          // Crea una subcarpeta para el proyecto dentro de la carpeta de la app
-          relativePath: '$kAppFolder/$project',
+          // La subcarpeta es solo el nombre del proyecto
+          relativePath: project,
         );
         savedFileNames.add(p.basename(file.path));
         debugPrint('Saved ${file.path} via MediaStore');
       }
     }
 
-    // 3. Guardar ambos archivos
+    // Guardar los archivos JSON existentes
     await save(metaFile);
     await save(descFile);
+
+    // Guardar el contenido del reporte si se proporcionó
+    if (reportContent != null && reportContent.isNotEmpty) {
+      // MediaStore necesita un archivo físico, así que creamos uno temporal
+      final tempDir = await getTemporaryDirectory();
+      final tempReportFile = File(p.join(tempDir.path, '${project}_report.txt'));
+      await tempReportFile.writeAsString(reportContent);
+
+      // Usamos el mismo helper para guardar el archivo de reporte temporal
+      await save(tempReportFile);
+
+      // NO es necesario borrar el archivo temporal. El plugin MediaStore
+      // lo MUEVE, no lo copia. Intentar borrarlo causa un error.
+      // El SO se encargará de limpiar la caché eventualmente.
+      // await tempReportFile.delete();
+    }
 
     if (savedFileNames.isEmpty) {
       throw Exception(

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models.dart';
@@ -239,5 +240,41 @@ class MetadataService with ChangeNotifier {
 
     return Future.wait(
         imageFiles.map((f) => PhotoMetadata.fromImageFile(f.path)));
+  }
+
+  /// Generates a human-readable text report for all photos in a project.
+  Future<String> generateProjectReport(String project) async {
+    // This logic is extracted from the original _buildZipForProject method
+    final allPhotos = await listPhotos(project);
+    if (allPhotos.isEmpty) {
+      return 'No photo metadata found for this project.';
+    }
+
+    final photosWithPaths = <PhotoEntry>[];
+    for (final photo in allPhotos) {
+      final f = await _storage.dcimFileFromRelativePath(photo.relativePath);
+      if (f != null && await f.exists()) {
+        photosWithPaths.add(photo);
+      }
+    }
+
+    if (photosWithPaths.isEmpty) {
+      return 'No photo files found for this project.';
+    }
+
+    final descriptions = StringBuffer();
+    descriptions.writeln('Project: $project');
+    descriptions.writeln(
+        'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
+    descriptions.writeln('---');
+
+    for (final photo in photosWithPaths) {
+      descriptions.writeln('[${photo.location}] ${photo.fileName}');
+      descriptions.writeln('  Description: ${photo.description}');
+      descriptions.writeln(
+          '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+      descriptions.writeln();
+    }
+    return descriptions.toString();
   }
 }

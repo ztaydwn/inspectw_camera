@@ -4,7 +4,6 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -62,10 +61,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
     setState(() => _isCopyingFiles = true);
 
     try {
-      // Ya no es necesario pedir permisos aquí. MediaStore y la lógica
-      // de exportación de ZIP ya se encargan de los permisos necesarios.
-      final savedFiles =
-          await storage.exportProjectDataToDownloads(widget.project);
+      // 1. Generar el contenido del reporte de texto.
+      final report = await meta.generateProjectReport(widget.project);
+
+      // 2. Llamar al método de exportación, pasándole el reporte.
+      final savedFiles = await storage.exportProjectDataToDownloads(
+        project: widget.project,
+        reportContent: report,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -149,19 +153,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      final descriptions = StringBuffer();
-      descriptions.writeln('Project: ${widget.project}');
-      descriptions.writeln(
-          'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
-      descriptions.writeln('---');
-
-      for (final photo in photosWithPaths) {
-        descriptions.writeln('[${photo.location}] ${photo.fileName}');
-        descriptions.writeln('  Description: ${photo.description}');
-        descriptions.writeln(
-            '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
-        descriptions.writeln();
-      }
+      // ¡Refactorizado! Llama al nuevo método para generar el reporte.
+      final descriptions = await meta.generateProjectReport(widget.project);
 
       if (Platform.isAndroid) {
         PermissionStatus permStatus;
@@ -184,7 +177,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final params = CreateZipParams(
         photos: photosWithPaths,
         project: widget.project,
-        descriptions: descriptions.toString(),
+        descriptions: descriptions,
         resolvedPaths: resolvedPaths,
       );
 
@@ -232,14 +225,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
         relativePath: '$kAppFolder/${widget.project}',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('ZIP saved to Downloads/$kAppFolder')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ZIP saved to Download/$kAppFolder')));
       }
     } catch (e) {
       debugPrint('[ZIP] Error saving to MediaStore: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save ZIP to Downloads: $e')));
+            SnackBar(content: Text('Failed to save ZIP to Download: $e')));
       }
     } finally {
       try {
