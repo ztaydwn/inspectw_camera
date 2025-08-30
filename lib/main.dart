@@ -23,7 +23,8 @@ class InspectWApp extends StatelessWidget {
       child: MaterialApp(
         title: 'InspectW Camera',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+          colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color.fromARGB(255, 0, 131, 155)),
           useMaterial3: true,
         ),
         home: const HomeScreen(),

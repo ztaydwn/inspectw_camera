@@ -37,3 +37,20 @@ class PhotoEntry {
         takenAt: DateTime.parse(json['takenAt']),
       );
 }
+
+class LocationStatus {
+  final String locationName;
+  bool isCompleted;
+
+  LocationStatus({required this.locationName, this.isCompleted = false});
+
+  Map<String, dynamic> toJson() => {
+        'locationName': locationName,
+        'isCompleted': isCompleted,
+      };
+
+  factory LocationStatus.fromJson(Map<String, dynamic> json) => LocationStatus(
+        locationName: json['locationName'],
+        isCompleted: json['isCompleted'] ?? false,
+      );
+}

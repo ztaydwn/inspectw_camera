@@ -90,7 +90,7 @@ class _SearchExplorerScreenState extends State<SearchExplorerScreen> {
                     fit: BoxFit.cover,
                   ),
                   title: Text(photo.description),
-                  subtitle: Text(photo.location),
+                  subtitle: Text('Ubicación: ${photo.location}'),
                   onTap: () {
                     Navigator.push(
                       context,

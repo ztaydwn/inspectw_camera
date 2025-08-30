@@ -43,6 +43,9 @@ class StorageService {
   File descriptionsFile(String project) =>
       File('${_appDir.path}/projects/$project/descriptions.json');
 
+  File locationStatusFile(String project) =>
+      File('${_appDir.path}/projects/$project/location_status.json');
+
   /// Returns the public DCIM directory on Android.
   /// Creates the directory if it does not exist.
   ///
@@ -70,6 +73,10 @@ class StorageService {
     if (!await desc.exists()) {
       await desc.writeAsString('{}',
           flush: true); // objeto vacío de descripciones
+    }
+    final status = locationStatusFile(project);
+    if (!await status.exists()) {
+      await status.writeAsString('[]', flush: true); // lista vacía de estados
     }
   }
 

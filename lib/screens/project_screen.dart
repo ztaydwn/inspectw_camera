@@ -16,6 +16,7 @@ import '../models.dart';
 import 'gallery_screen.dart';
 import 'camera_screen.dart';
 import '../constants.dart';
+import 'location_checklist_screen.dart';
 import 'search_explorer_screen.dart';
 
 /// Isolate function to find all existing photo files for a project.
@@ -319,15 +320,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Proyecto: ${widget.project}'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.playlist_add_check),
+            tooltip: 'Checklist de Ubicaciones',
             onPressed: () {
               Navigator.push(
                 context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      LocationChecklistScreen(project: widget.project),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Buscar en el proyecto',
+            onPressed: () {
+              Navigator.push(
+                context, 
                 MaterialPageRoute(
                   builder: (context) =>
                       SearchExplorerScreen(project: widget.project),
@@ -335,48 +352,53 @@ class _ProjectScreenState extends State<ProjectScreen> {
               );
             },
           ),
-          _isExporting
-              ? const Padding(
-                  padding: EdgeInsets.only(right: 16.0),
-                  child: Center(
-                      child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 3))),
-                )
-              : IconButton(
-                  onPressed: _exportProject, icon: const Icon(Icons.ios_share)),
-          if (_isUploading)
-            const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Center(
-                  child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 3))),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.cloud_upload),
-              onPressed: _uploadToDrive,
-            ),
-          if (_isCopyingFiles)
-
-            ///BOTON PARA ARCHIVOS DE DATOS
-            const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Center(
-                  child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 3))),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.copy_all_outlined),
-              onPressed: _copyDataFiles,
-              tooltip: 'Copiar archivos de datos',
-            ),
+          // Agrupamos acciones en un PopupMenuButton para limpiar la AppBar
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'export':
+                  _exportProject();
+                  break;
+                case 'upload':
+                  _uploadToDrive();
+                  break;
+                case 'copy':
+                  _copyDataFiles();
+                  break;
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.ios_share),
+                  title: Text('Exportar ZIP'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'upload',
+                child: ListTile(
+                  leading: Icon(Icons.cloud_upload_outlined),
+                  title: Text('Subir a Drive'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'copy',
+                child: ListTile(
+                  leading: Icon(Icons.copy_all_outlined),
+                  title: Text('Copiar datos'),
+                ),
+              ),
+            ],
+            // Mostramos un indicador de progreso si alguna acción está en curso
+            icon: (_isExporting || _isUploading || _isCopyingFiles)
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  )
+                : const Icon(Icons.more_vert),
+          ),
         ],
       ),
       body: FutureBuilder<List<String>>(
@@ -386,50 +408,109 @@ class _ProjectScreenState extends State<ProjectScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text('Error al cargar ubicaciones: ${snap.error}'),
+              ),
+            );
           }
           final items = snap.data ?? [];
-          return Column(
-            children: [
-              if (items.isEmpty)
-                const ListTile(
-                    title: Text('Sin ubicaciones. Crea la primera.')),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final loc = items[i];
-                    return ListTile(
-                      title: Text(loc),
-                      leading: const Icon(Icons.place_outlined),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.camera_alt_outlined),
-                        onPressed: () => Navigator.push(
+
+          if (items.isEmpty) {
+            // UI mejorada para cuando no hay ubicaciones
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.location_off_outlined,
+                    size: 80,
+                    color: theme.colorScheme.secondary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No hay ubicaciones',
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Crea una nueva ubicación para empezar a añadir fotos.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Usamos GridView para un layout más moderno
+          return GridView.builder(
+            padding: const EdgeInsets.all(8.0),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2, // 2 tarjetas por fila
+              crossAxisSpacing: 8.0,
+              mainAxisSpacing: 8.0,
+              childAspectRatio: 1.2, // Ajusta la proporción de las tarjetas
+            ),
+            itemCount: items.length,
+            itemBuilder: (_, i) {
+              final loc = items[i];
+              return Card(
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          GalleryScreen(project: widget.project, location: loc),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.place_outlined),
+                        title: Text(
+                          loc,
+                          style: theme.textTheme.titleMedium,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: FilledButton.tonal(
+                          onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => CameraScreen(
                                   project: widget.project, location: loc),
-                            )),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.camera_alt_outlined),
+                              SizedBox(width: 8),
+                              Text('Añadir Foto'),
+                            ],
+                          ),
+                        ),
                       ),
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GalleryScreen(
-                                project: widget.project, location: loc),
-                          )),
-                    );
-                  },
+                      const SizedBox(height: 8),
+                    ],
+                  ),
                 ),
-              )
-            ],
+              );
+            },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: _addLocation,
-        icon: const Icon(Icons.add_location_alt_outlined),
-        label: const Text('Nueva ubicación'),
+        tooltip: 'Nueva ubicación',
+        child: const Icon(Icons.add_location_alt_outlined),
       ),
     );
   }

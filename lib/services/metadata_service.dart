@@ -20,6 +20,8 @@ class MetadataService with ChangeNotifier {
   final Map<String, List<PhotoEntry>> _cache = {};
   // project -> set of suggestions
   final Map<String, Map<String, int>> _suggestions = {};
+  // project -> location name -> status
+  final Map<String, Map<String, LocationStatus>> _locationStatusCache = {};
 
   // --- Background Saving State ---
   int _savingCount = 0;
@@ -96,6 +98,7 @@ class MetadataService with ChangeNotifier {
     }
     _cache.remove(project);
     _suggestions.remove(project);
+    _locationStatusCache.remove(project);
   }
 
   Future<List<String>> listLocations(String project) async {
@@ -276,5 +279,75 @@ class MetadataService with ChangeNotifier {
       descriptions.writeln();
     }
     return descriptions.toString();
+  }
+
+  // --- Location Status Methods ---
+
+  Future<void> _loadLocationStatus(String project) async {
+    if (_locationStatusCache.containsKey(project)) return;
+
+    final f = _storage.locationStatusFile(project);
+    if (await f.exists()) {
+      final content = await f.readAsString();
+      if (content.isNotEmpty) {
+        final data = await compute(jsonDecode, content) as List;
+        final statuses = data.map((e) => LocationStatus.fromJson(e));
+        _locationStatusCache[project] = {
+          for (var s in statuses) s.locationName: s
+        };
+      } else {
+        _locationStatusCache[project] = {};
+      }
+    } else {
+      _locationStatusCache[project] = {};
+    }
+  }
+
+  Future<List<LocationStatus>> getLocationStatuses(String project) async {
+    await _load(project); // ensure photos are loaded to get all locations
+    await _loadLocationStatus(project);
+
+    final allLocationNames = await listLocations(project);
+    final savedStatuses = _locationStatusCache[project] ?? {};
+
+    final allStatuses = allLocationNames.map((name) {
+      return savedStatuses[name] ?? LocationStatus(locationName: name);
+    }).toList();
+
+    // Update cache with any new locations
+    for (var status in allStatuses) {
+      if (!savedStatuses.containsKey(status.locationName)) {
+        savedStatuses[status.locationName] = status;
+      }
+    }
+    _locationStatusCache[project] = savedStatuses;
+
+    return allStatuses..sort((a, b) => a.locationName.compareTo(b.locationName));
+  }
+
+  Future<void> updateLocationStatus(
+      String project, String locationName, bool isCompleted) async {
+    await _loadLocationStatus(project);
+    final statuses = _locationStatusCache[project]!;
+    if (statuses.containsKey(locationName)) {
+      statuses[locationName]!.isCompleted = isCompleted;
+    } else {
+      statuses[locationName] =
+          LocationStatus(locationName: locationName, isCompleted: isCompleted);
+    }
+    await _persistLocationStatus(project);
+    notifyListeners();
+  }
+
+  Future<void> _persistLocationStatus(String project) async {
+    if (!_locationStatusCache.containsKey(project)) return;
+
+    final f = _storage.locationStatusFile(project);
+    final statuses = _locationStatusCache[project]!.values.toList();
+
+    await compute(persistMetadataIsolate, { // can reuse the same isolate
+      'file': f,
+      'content': statuses,
+    });
   }
 }
