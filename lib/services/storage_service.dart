@@ -36,6 +36,17 @@ class StorageService {
     return d;
   }
 
+  Future<void> renameLocation(
+      String project, String oldLocation, String newLocation) async {
+    final oldPath = p.join(_appDir.path, 'projects', project, oldLocation);
+    final newPath = p.join(_appDir.path, 'projects', project, newLocation);
+
+    final oldDir = Directory(oldPath);
+    if (await oldDir.exists()) {
+      await oldDir.rename(newPath);
+    }
+  }
+
   File metadataFile(String project) =>
       File('${_appDir.path}/projects/$project/metadata.json');
 
@@ -174,7 +185,7 @@ class StorageService {
       tempFilePath: tempReportFile.path,
       dirType: DirType.download,
       dirName: DirName.download,
-      relativePath: project,
+      relativePath: p.join(kAppFolder, project),
     );
 
     // MediaStore MUEVE el archivo, así que no necesitamos borrar el temporal.

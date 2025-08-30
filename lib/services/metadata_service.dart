@@ -119,6 +119,37 @@ class MetadataService with ChangeNotifier {
     await _storage.ensureLocation(project, location);
   }
 
+  Future<void> renameLocation(
+      String project, String oldName, String newName) async {
+    await _storage.renameLocation(project, oldName, newName);
+
+    // Update photo entries
+    await _load(project);
+    final photos = _cache[project]!;
+    for (var photo in photos) {
+      if (photo.location == oldName) {
+        photo.location = newName;
+        // This assumes a specific relative path structure, which is brittle.
+        // A better approach would be to reconstruct it based on components.
+        photo.relativePath = photo.relativePath.replaceFirst('/$oldName/', '/$newName/');
+      }
+    }
+
+    // Update location statuses
+    await _loadLocationStatus(project);
+    final statuses = _locationStatusCache[project]!;
+    if (statuses.containsKey(oldName)) {
+      final status = statuses.remove(oldName)!;
+      status.locationName = newName;
+      statuses[newName] = status;
+    }
+
+    // Persist changes
+    await _persist(project);
+    await _persistLocationStatus(project);
+    notifyListeners();
+  }
+
   Future<void> _load(String project) async {
     if (_cache.containsKey(project)) return;
 

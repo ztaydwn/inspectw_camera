@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path/path.dart' as p;
 
 import '../services/isolate_helpers.dart';
 import '../services/storage_service.dart';
@@ -122,6 +123,39 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
+  Future<void> _renameLocation(String oldName) async {
+    final c = TextEditingController(text: oldName);
+    final newName = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renombrar ubicación'),
+        content: TextField(
+            controller: c,
+            decoration: const InputDecoration(labelText: 'Nuevo nombre')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: const Text('Renombrar')),
+        ],
+      ),
+    );
+    if (newName != null && newName.isNotEmpty && newName != oldName) {
+      try {
+        await meta.renameLocation(widget.project, oldName, newName);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al renombrar: $e')),
+          );
+        }
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<String?> _buildZipForProject() async {
     setState(() => _isExporting = true);
     try {
@@ -221,17 +255,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
         tempFilePath: zipPath,
         dirType: DirType.download,
         dirName: DirName.download,
-        relativePath: widget.project,
+        relativePath: p.join(kAppFolder, widget.project),
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('ZIP saved to Downloads/$kAppFolder')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ZIP saved to Download/$kAppFolder')));
       }
     } catch (e) {
       debugPrint('[ZIP] Error saving to MediaStore: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save ZIP to Downloads: $e')));
+            SnackBar(content: Text('Failed to save ZIP to Download: $e')));
       }
     } finally {
       try {
@@ -344,7 +378,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
             tooltip: 'Buscar en el proyecto',
             onPressed: () {
               Navigator.push(
-                context, 
+                context,
                 MaterialPageRoute(
                   builder: (context) =>
                       SearchExplorerScreen(project: widget.project),
@@ -465,6 +499,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                           GalleryScreen(project: widget.project, location: loc),
                     ),
                   ),
+                  onLongPress: () => _renameLocation(loc),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

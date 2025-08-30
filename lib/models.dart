@@ -1,9 +1,9 @@
 class PhotoEntry {
   final String id;
   final String project;
-  final String location;
+  String location;
   final String fileName;
-  final String relativePath; // e.g. projects/{project}/{location}/IMG_*.jpg
+  String relativePath; // e.g. projects/{project}/{location}/IMG_*.jpg
   String description;
   final DateTime takenAt;
 
@@ -39,7 +39,7 @@ class PhotoEntry {
 }
 
 class LocationStatus {
-  final String locationName;
+  String locationName;
   bool isCompleted;
 
   LocationStatus({required this.locationName, this.isCompleted = false});
