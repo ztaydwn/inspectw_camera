@@ -510,7 +510,6 @@ class MetadataService with ChangeNotifier {
   // --- Checklist Methods ---
 
   Future<Checklist?> getChecklist(String project, String location) async {
-    await _storage.ensureChecklistDir(project);
     final file = _storage.checklistFile(project, location);
     if (await file.exists()) {
       final content = await file.readAsString();
@@ -539,6 +538,7 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<void> saveChecklist(String project, Checklist checklist) async {
+    await _storage.ensureChecklistDir(project);
     final file = _storage.checklistFile(project, checklist.locationName);
     await compute(persistMetadataIsolate, {
       'file': file,

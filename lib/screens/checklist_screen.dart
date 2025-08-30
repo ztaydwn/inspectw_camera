@@ -24,12 +24,17 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   bool _isLoading = true;
 
   @override
-  void initState() {
-    super.initState();
-    _meta = context.read<MetadataService>();
-    _storage = StorageService();
-    _loadChecklist();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _meta = context.read<MetadataService>();
+      _storage = StorageService();
+      _isInitialized = true;
+      _loadChecklist();
+    }
   }
+
+  bool _isInitialized = false;
 
   Future<void> _loadChecklist() async {
     setState(() => _isLoading = true);

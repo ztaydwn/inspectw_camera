@@ -160,25 +160,57 @@ class _ProjectScreenState extends State<ProjectScreen> {
     );
 
     if (name != null && name.isNotEmpty) {
-      await meta.createLocation(widget.project, name);
-
-      if (template != null) {
-        // This is a checklist-based location.
-        await meta.createChecklistFromTemplate(widget.project, name, template);
+      try {
+        // Show loading indicator
         if (mounted) {
-          // Navigate to the new checklist screen
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ChecklistScreen(
-                project: widget.project,
-                location: name,
-              ),
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Creando ubicación...'),
+              duration: Duration(seconds: 1),
             ),
           );
         }
+
+        // Create location first
+        await meta.createLocation(widget.project, name);
+
+        if (template != null) {
+          // Create the checklist from template
+          await meta.createChecklistFromTemplate(
+              widget.project, name, template);
+
+          // Refresh locations to ensure UI is updated
+          _refreshLocations();
+
+          if (mounted) {
+            // Small delay to ensure everything is persisted
+            await Future.delayed(const Duration(milliseconds: 300));
+
+            // Navigate to the new checklist screen
+            if (mounted) {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChecklistScreen(
+                    project: widget.project,
+                    location: name,
+                  ),
+                ),
+              );
+            }
+          }
+        } else {
+          // For regular locations, just refresh
+          _refreshLocations();
+        }
+      } catch (e) {
+        debugPrint('Error creating location: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al crear ubicación: $e')),
+          );
+        }
       }
-      _refreshLocations();
     }
   }
 
