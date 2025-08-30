@@ -141,12 +141,14 @@ class CreateZipParams {
   final List<PhotoEntry> photos;
   final String project;
   final String descriptions;
+  final String projectDataReport; // Added
   final List<String> resolvedPaths;
 
   CreateZipParams(
       {required this.photos,
       required this.project,
       required this.descriptions,
+      required this.projectDataReport, // Added
       required this.resolvedPaths});
 }
 
@@ -172,6 +174,10 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   final descBytes = utf8.encode(params.descriptions);
   encoder.addArchiveFile(
       ArchiveFile('descriptions.txt', descBytes.length, descBytes));
+
+  final projectDataBytes = utf8.encode(params.projectDataReport);
+  encoder.addArchiveFile(
+      ArchiveFile('infoproyect.txt', projectDataBytes.length, projectDataBytes));
 
   encoder.close();
   return zipPath;

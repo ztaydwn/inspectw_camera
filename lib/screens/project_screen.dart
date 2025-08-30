@@ -19,6 +19,7 @@ import 'camera_screen.dart';
 import '../constants.dart';
 import 'location_checklist_screen.dart';
 import 'search_explorer_screen.dart';
+import 'project_data_screen.dart';
 
 /// Isolate function to find all existing photo files for a project.
 Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
@@ -186,8 +187,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      // ¡Refactorizado! Llama al nuevo método para generar el reporte.
-      final descriptions = await meta.generateProjectReport(widget.project);
+      // Generate both reports
+      final descriptions = await meta.generatePhotoDescriptionsReport(widget.project);
+      final projectDataReport = await meta.generateProjectDataReport(widget.project);
 
       if (Platform.isAndroid) {
         PermissionStatus permStatus;
@@ -211,6 +213,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
         photos: photosWithPaths,
         project: widget.project,
         descriptions: descriptions,
+        projectDataReport: projectDataReport,
         resolvedPaths: resolvedPaths,
       );
 
@@ -399,6 +402,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 case 'copy':
                   _copyDataFiles();
                   break;
+                case 'project_data':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ProjectDataScreen(project: widget.project),
+                    ),
+                  );
+                  break;
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -421,6 +433,13 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 child: ListTile(
                   leading: Icon(Icons.copy_all_outlined),
                   title: Text('Copiar datos'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'project_data',
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('Datos del Proyecto'),
                 ),
               ),
             ],

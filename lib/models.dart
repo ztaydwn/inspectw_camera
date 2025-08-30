@@ -54,3 +54,89 @@ class LocationStatus {
         isCompleted: json['isCompleted'] ?? false,
       );
 }
+
+enum TriState { si, no, noCorresponde }
+
+class ProjectData {
+  String establishmentName;
+  String owner;
+  String address;
+  DateTime inspectionDate;
+  String specialty;
+  String designatedProfessionals;
+  String accompanyingPersonnel;
+  String inspectionProcessComments;
+  String establishmentFunction;
+  String occupiedArea;
+  String floorCount;
+  String risk;
+  String formalSituation;
+  String specialObservations;
+  TriState q1;
+  TriState q2;
+  TriState q3;
+  TriState q4;
+
+  ProjectData({
+    this.establishmentName = '',
+    this.owner = '',
+    this.address = '',
+    required this.inspectionDate,
+    this.specialty = '',
+    this.designatedProfessionals = '',
+    this.accompanyingPersonnel = '',
+    this.inspectionProcessComments = '',
+    this.establishmentFunction = '',
+    this.occupiedArea = '',
+    this.floorCount = '',
+    this.risk = '',
+    this.formalSituation = '',
+    this.specialObservations = '',
+    this.q1 = TriState.noCorresponde,
+    this.q2 = TriState.noCorresponde,
+    this.q3 = TriState.noCorresponde,
+    this.q4 = TriState.noCorresponde,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'establishmentName': establishmentName,
+        'owner': owner,
+        'address': address,
+        'inspectionDate': inspectionDate.toIso8601String(),
+        'specialty': specialty,
+        'designatedProfessionals': designatedProfessionals,
+        'accompanyingPersonnel': accompanyingPersonnel,
+        'inspectionProcessComments': inspectionProcessComments,
+        'establishmentFunction': establishmentFunction,
+        'occupiedArea': occupiedArea,
+        'floorCount': floorCount,
+        'risk': risk,
+        'formalSituation': formalSituation,
+        'specialObservations': specialObservations,
+        'q1': q1.index,
+        'q2': q2.index,
+        'q3': q3.index,
+        'q4': q4.index,
+      };
+
+  factory ProjectData.fromJson(Map<String, dynamic> json) => ProjectData(
+        establishmentName: json['establishmentName'] ?? '',
+        owner: json['owner'] ?? '',
+        address: json['address'] ?? '',
+        inspectionDate: DateTime.parse(json['inspectionDate']),
+        specialty: json['specialty'] ?? '',
+        designatedProfessionals: json['designatedProfessionals'] ?? '',
+        accompanyingPersonnel: json['accompanyingPersonnel'] ?? '',
+        inspectionProcessComments: json['inspectionProcessComments'] ?? '',
+        establishmentFunction: json['establishmentFunction'] ?? '',
+        occupiedArea: json['occupiedArea'] ?? '',
+        floorCount: json['floorCount'] ?? '',
+        risk: json['risk'] ?? '',
+        formalSituation: json['formalSituation'] ?? '',
+        specialObservations: json['specialObservations'] ?? '',
+        q1: TriState.values[json['q1'] ?? 2],
+        q2: TriState.values[json['q2'] ?? 2],
+        q3: TriState.values[json['q3'] ?? 2],
+        q4: TriState.values[json['q4'] ?? 2],
+      );
+}

@@ -57,6 +57,9 @@ class StorageService {
   File locationStatusFile(String project) =>
       File('${_appDir.path}/projects/$project/location_status.json');
 
+  File projectDataFile(String project) =>
+      File('${_appDir.path}/projects/$project/project_data.json');
+
   /// Returns the public DCIM directory on Android.
   /// Creates the directory if it does not exist.
   ///

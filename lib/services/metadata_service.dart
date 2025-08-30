@@ -99,6 +99,11 @@ class MetadataService with ChangeNotifier {
     _cache.remove(project);
     _suggestions.remove(project);
     _locationStatusCache.remove(project);
+    // Also delete the project data file
+    final dataFile = _storage.projectDataFile(project);
+    if (await dataFile.exists()) {
+      await dataFile.delete();
+    }
   }
 
   Future<List<String>> listLocations(String project) async {
@@ -276,12 +281,44 @@ class MetadataService with ChangeNotifier {
         imageFiles.map((f) => PhotoMetadata.fromImageFile(f.path)));
   }
 
+  /// Generates a human-readable text report with project data.
+  Future<String> generateProjectDataReport(String project) async {
+    final projectData = await getProjectData(project);
+    final report = StringBuffer();
+    report.writeln('Project: $project');
+    report.writeln(
+        'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
+    report.writeln('---');
+
+    if (projectData != null) {
+      report.writeln('DATOS DEL PROYECTO:');
+      report.writeln('Nombre del establecimiento: ${projectData.establishmentName}');
+      report.writeln('Propietario: ${projectData.owner}');
+      report.writeln('Dirección: ${projectData.address}');
+      report.writeln('Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
+      report.writeln('Especialidad: ${projectData.specialty}');
+      report.writeln('Profesionales Designados: ${projectData.designatedProfessionals}');
+      report.writeln('Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
+      report.writeln('Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
+      report.writeln('Función del establecimiento: ${projectData.establishmentFunction}');
+      report.writeln('Área ocupada: ${projectData.occupiedArea}');
+      report.writeln('Cantidad de pisos: ${projectData.floorCount}');
+      report.writeln('Riesgo: ${projectData.risk}');
+      report.writeln('Situación formal: ${projectData.formalSituation}');
+      report.writeln('Observaciones especiales: ${projectData.specialObservations}');
+      report.writeln('--- ');
+    }
+    return report.toString();
+  }
+
   /// Generates a human-readable text report for all photos in a project.
-  Future<String> generateProjectReport(String project) async {
-    // This logic is extracted from the original _buildZipForProject method
+  Future<String> generatePhotoDescriptionsReport(String project) async {
     final allPhotos = await listPhotos(project);
+    final descriptions = StringBuffer();
+
     if (allPhotos.isEmpty) {
-      return 'No photo metadata found for this project.';
+      descriptions.writeln('No photo metadata found for this project.');
+      return descriptions.toString();
     }
 
     final photosWithPaths = <PhotoEntry>[];
@@ -293,8 +330,23 @@ class MetadataService with ChangeNotifier {
     }
 
     if (photosWithPaths.isEmpty) {
-      return 'No photo files found for this project.';
+      descriptions.writeln('No photo files found for this project.');
+    } else {
+      for (final photo in photosWithPaths) {
+        descriptions.writeln('[${photo.location}] ${photo.fileName}');
+        descriptions.writeln('  Description: ${photo.description}');
+        descriptions.writeln(
+            '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+        descriptions.writeln();
+      }
     }
+    return descriptions.toString();
+  }
+
+  /// Generates a human-readable text report for all photos in a project.
+  Future<String> generateProjectReport(String project) async {
+    final projectData = await getProjectData(project);
+    final allPhotos = await listPhotos(project);
 
     final descriptions = StringBuffer();
     descriptions.writeln('Project: $project');
@@ -302,12 +354,48 @@ class MetadataService with ChangeNotifier {
         'Exported on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
     descriptions.writeln('---');
 
-    for (final photo in photosWithPaths) {
-      descriptions.writeln('[${photo.location}] ${photo.fileName}');
-      descriptions.writeln('  Description: ${photo.description}');
-      descriptions.writeln(
-          '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
-      descriptions.writeln();
+    if (projectData != null) {
+      descriptions.writeln('DATOS DEL PROYECTO:');
+      descriptions.writeln('Nombre del establecimiento: ${projectData.establishmentName}');
+      descriptions.writeln('Propietario: ${projectData.owner}');
+      descriptions.writeln('Dirección: ${projectData.address}');
+      descriptions.writeln('Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
+      descriptions.writeln('Especialidad: ${projectData.specialty}');
+      descriptions.writeln('Profesionales Designados: ${projectData.designatedProfessionals}');
+      descriptions.writeln('Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
+      descriptions.writeln('Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
+      descriptions.writeln('Función del establecimiento: ${projectData.establishmentFunction}');
+      descriptions.writeln('Área ocupada: ${projectData.occupiedArea}');
+      descriptions.writeln('Cantidad de pisos: ${projectData.floorCount}');
+      descriptions.writeln('Riesgo: ${projectData.risk}');
+      descriptions.writeln('Situación formal: ${projectData.formalSituation}');
+      descriptions.writeln('Observaciones especiales: ${projectData.specialObservations}');
+      descriptions.writeln('--- ');
+    }
+    
+    if (allPhotos.isEmpty) {
+      descriptions.writeln('No photo metadata found for this project.');
+      return descriptions.toString();
+    }
+
+    final photosWithPaths = <PhotoEntry>[];
+    for (final photo in allPhotos) {
+      final f = await _storage.dcimFileFromRelativePath(photo.relativePath);
+      if (f != null && await f.exists()) {
+        photosWithPaths.add(photo);
+      }
+    }
+
+    if (photosWithPaths.isEmpty) {
+      descriptions.writeln('No photo files found for this project.');
+    } else {
+      for (final photo in photosWithPaths) {
+        descriptions.writeln('[${photo.location}] ${photo.fileName}');
+        descriptions.writeln('  Description: ${photo.description}');
+        descriptions.writeln(
+            '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+        descriptions.writeln();
+      }
     }
     return descriptions.toString();
   }
@@ -380,5 +468,28 @@ class MetadataService with ChangeNotifier {
       'file': f,
       'content': statuses,
     });
+  }
+
+  // --- Project Data Methods ---
+
+  Future<ProjectData?> getProjectData(String project) async {
+    final f = _storage.projectDataFile(project);
+    if (await f.exists()) {
+      final content = await f.readAsString();
+      if (content.isNotEmpty) {
+        final data = await compute(jsonDecode, content) as Map<String, dynamic>;
+        return ProjectData.fromJson(data);
+      }
+    }
+    return ProjectData(inspectionDate: DateTime.now());
+  }
+
+  Future<void> saveProjectData(String project, ProjectData data) async {
+    final f = _storage.projectDataFile(project);
+    await compute(persistMetadataIsolate, {
+      'file': f,
+      'content': data.toJson(),
+    });
+    notifyListeners();
   }
 }
