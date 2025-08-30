@@ -20,6 +20,8 @@ import '../constants.dart';
 import 'location_checklist_screen.dart';
 import 'search_explorer_screen.dart';
 import 'project_data_screen.dart';
+import '../checklist_templates.dart';
+import 'checklist_screen.dart';
 
 /// Isolate function to find all existing photo files for a project.
 Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
@@ -56,6 +58,28 @@ class _ProjectScreenState extends State<ProjectScreen> {
   bool _isExporting = false;
   bool _isUploading = false;
   bool _isCopyingFiles = false;
+  Future<Map<String, bool>>? _locationsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    storage = StorageService();
+    // meta is initialized in didChangeDependencies, which is called after initState
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    meta = context.read<MetadataService>();
+    // Initialize the future here where meta is available
+    _locationsFuture ??= _getLocationsWithChecklistStatus();
+  }
+
+  void _refreshLocations() {
+    setState(() {
+      _locationsFuture = _getLocationsWithChecklistStatus();
+    });
+  }
 
   /// FUNCION PARA COPIAR ARCHIVOS DE DATOS
 
@@ -92,21 +116,37 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    storage = StorageService();
-    meta = context.read<MetadataService>();
-  }
-
   Future<void> _addLocation() async {
+    final template = await showDialog<ChecklistTemplate?>(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('Seleccionar tipo de ubicación'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Ubicación Vacía (sin checklist)'),
+            ),
+            ...kChecklistTemplates.map((t) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, t),
+                  child: Text(t.name),
+                )),
+          ],
+        );
+      },
+    );
+    if (!mounted) return;
+
     final c = TextEditingController();
     final name = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Nueva ubicación'),
+        title: Text(template == null
+            ? 'Nueva Ubicación'
+            : 'Nombre para checklist: ${template.name}'),
         content: TextField(
             controller: c,
+            autofocus: true,
             decoration: const InputDecoration(labelText: 'Nombre')),
         actions: [
           TextButton(
@@ -118,9 +158,27 @@ class _ProjectScreenState extends State<ProjectScreen> {
         ],
       ),
     );
+
     if (name != null && name.isNotEmpty) {
       await meta.createLocation(widget.project, name);
-      if (mounted) setState(() {});
+
+      if (template != null) {
+        // This is a checklist-based location.
+        await meta.createChecklistFromTemplate(widget.project, name, template);
+        if (mounted) {
+          // Navigate to the new checklist screen
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChecklistScreen(
+                project: widget.project,
+                location: name,
+              ),
+            ),
+          );
+        }
+      }
+      _refreshLocations();
     }
   }
 
@@ -139,7 +197,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
               child: const Text('Cancelar')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, c.text.trim()),
-              child: const Text('Renombrar')),
+              child: const Text('Renombrar'))
         ],
       ),
     );
@@ -153,8 +211,19 @@ class _ProjectScreenState extends State<ProjectScreen> {
           );
         }
       }
-      if (mounted) setState(() {});
+      _refreshLocations();
     }
+  }
+
+  Future<Map<String, bool>> _getLocationsWithChecklistStatus() async {
+    final locations = await meta.listLocations(widget.project);
+    final Map<String, bool> locationStatus = {};
+    for (final loc in locations) {
+      final isChecklist =
+          await storage.checklistFile(widget.project, loc).exists();
+      locationStatus[loc] = isChecklist;
+    }
+    return locationStatus;
   }
 
   Future<String?> _buildZipForProject() async {
@@ -188,8 +257,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
       }
 
       // Generate both reports
-      final descriptions = await meta.generatePhotoDescriptionsReport(widget.project);
-      final projectDataReport = await meta.generateProjectDataReport(widget.project);
+      final descriptions =
+          await meta.generatePhotoDescriptionsReport(widget.project);
+      final projectDataReport =
+          await meta.generateProjectDataReport(widget.project);
 
       if (Platform.isAndroid) {
         PermissionStatus permStatus;
@@ -454,8 +525,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<String>>(
-        future: meta.listLocations(widget.project),
+      body: FutureBuilder<Map<String, bool>>(
+        future: _locationsFuture,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -468,9 +539,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
               ),
             );
           }
-          final items = snap.data ?? [];
+          final items = snap.data ?? {};
+          final locations = items.keys.toList();
 
-          if (items.isEmpty) {
+          if (locations.isEmpty) {
             // UI mejorada para cuando no hay ubicaciones
             return Center(
               child: Column(
@@ -505,25 +577,43 @@ class _ProjectScreenState extends State<ProjectScreen> {
               mainAxisSpacing: 8.0,
               childAspectRatio: 1.2, // Ajusta la proporción de las tarjetas
             ),
-            itemCount: items.length,
+            itemCount: locations.length,
             itemBuilder: (_, i) {
-              final loc = items[i];
+              final loc = locations[i];
+              final isChecklist = items[loc]!;
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          GalleryScreen(project: widget.project, location: loc),
-                    ),
-                  ),
+                  onTap: () async {
+                    if (isChecklist) {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChecklistScreen(
+                            project: widget.project,
+                            location: loc,
+                          ),
+                        ),
+                      );
+                    } else {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GalleryScreen(
+                              project: widget.project, location: loc),
+                        ),
+                      );
+                    }
+                    _refreshLocations();
+                  },
                   onLongPress: () => _renameLocation(loc),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.place_outlined),
+                        leading: Icon(isChecklist
+                            ? Icons.checklist_rtl
+                            : Icons.place_outlined),
                         title: Text(
                           loc,
                           style: theme.textTheme.titleMedium,
@@ -535,19 +625,37 @@ class _ProjectScreenState extends State<ProjectScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: FilledButton.tonal(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CameraScreen(
-                                  project: widget.project, location: loc),
-                            ),
-                          ),
-                          child: const Row(
+                          onPressed: () {
+                            if (isChecklist) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ChecklistScreen(
+                                    project: widget.project,
+                                    location: loc,
+                                  ),
+                                ),
+                              ).then((_) => _refreshLocations());
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CameraScreen(
+                                      project: widget.project, location: loc),
+                                ),
+                              );
+                            }
+                          },
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.camera_alt_outlined),
-                              SizedBox(width: 8),
-                              Text('Añadir Foto'),
+                              Icon(isChecklist
+                                  ? Icons.playlist_add_check_circle_outlined
+                                  : Icons.camera_alt_outlined),
+                              const SizedBox(width: 8),
+                              Text(isChecklist
+                                  ? 'Ver Checklist'
+                                  : 'Añadir Foto'),
                             ],
                           ),
                         ),

@@ -9,7 +9,7 @@ class PhotoMetadata {
 
   /// Intenta construir el objeto desde una ruta de imagen
   static Future<PhotoMetadata> fromImageFile(String imagePath) async {
-    final jsonPath = imagePath.replaceAll(RegExp(r'\\.jpe?g\$'), '.json');
+    final jsonPath = imagePath.replaceAll(RegExp(r'\.jpe?g$'), '.json');
     String desc = '';
     if (await File(jsonPath).exists()) {
       try {

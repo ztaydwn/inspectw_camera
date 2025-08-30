@@ -140,3 +140,69 @@ class ProjectData {
         q4: TriState.values[json['q4'] ?? 2],
       );
 }
+
+class ChecklistItem {
+  final String id;
+  final String title;
+  bool isCompleted;
+  String? photoId; // ID of the PhotoEntry taken for this item
+
+  ChecklistItem({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+    this.photoId,
+  });
+
+  factory ChecklistItem.fromJson(Map<String, dynamic> json) => ChecklistItem(
+        id: json['id'],
+        title: json['title'],
+        isCompleted: json['isCompleted'] ?? false,
+        photoId: json['photoId'],
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'isCompleted': isCompleted,
+        'photoId': photoId,
+      };
+}
+
+class Checklist {
+  final String locationName;
+  final String templateName;
+  final List<ChecklistItem> items;
+
+  Checklist({
+    required this.locationName,
+    required this.templateName,
+    required this.items,
+  });
+
+  factory Checklist.fromJson(Map<String, dynamic> json) => Checklist(
+        locationName: json['locationName'],
+        templateName: json['templateName'],
+        items: (json['items'] as List)
+            .map((item) => ChecklistItem.fromJson(item))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'locationName': locationName,
+        'templateName': templateName,
+        'items': items.map((item) => item.toJson()).toList(),
+      };
+}
+
+// This is for the hard-coded template definition
+class ChecklistItemTemplate {
+  final String title;
+  const ChecklistItemTemplate({required this.title});
+}
+
+class ChecklistTemplate {
+  final String name;
+  final List<ChecklistItemTemplate> items;
+  const ChecklistTemplate({required this.name, required this.items});
+}

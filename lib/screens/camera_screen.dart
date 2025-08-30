@@ -13,8 +13,14 @@ enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
 class CameraScreen extends StatefulWidget {
   final String project;
   final String location;
-  const CameraScreen(
-      {super.key, required this.project, required this.location});
+  final String? initialDescription;
+
+  const CameraScreen({
+    super.key,
+    required this.project,
+    required this.location,
+    this.initialDescription,
+  });
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -100,7 +106,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _takePhoto() async {
     final cam = controller;
-    // Use context.read here because we are in a button handler and not rebuilding
     final metadataService = context.read<MetadataService>();
 
     if (cam == null ||
@@ -119,11 +124,10 @@ class _CameraScreenState extends State<CameraScreen> {
       final xFile = await cam.takePicture();
       debugPrint('[Camera] temp: ${xFile.path}');
 
-      final desc = await _askForDescription();
+      final desc = widget.initialDescription ?? await _askForDescription();
       if (desc == null) return; // User cancelled
 
-      // --- Delegate saving to the service ---
-      metadataService.saveNewPhoto(
+      final newPhoto = await metadataService.saveNewPhoto(
         xFile: xFile,
         description: desc,
         project: widget.project,
@@ -133,9 +137,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Foto capturada. Guardando en segundo plano...'),
+          content: Text('Foto capturada. Guardando...'),
           duration: Duration(seconds: 2),
         ));
+        Navigator.pop(context, newPhoto);
       }
     } on CameraException catch (e) {
       if (mounted) {

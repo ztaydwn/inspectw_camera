@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -103,59 +104,60 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : photos.isEmpty
               ? const Center(child: Text('Sin fotos todavía.'))
-              : GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                  ),
+              : ListView.builder(
+                  padding: const EdgeInsets.all(8.0),
                   itemCount: photos.length,
                   itemBuilder: (context, i) {
                     final pEntry = photos[i];
                     final fileToShow = _resolvedFiles[pEntry.id];
 
-                    return GestureDetector(
-                      onTap: () async {
-                        if (fileToShow == null) return;
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PhotoViewerScreen(
-                              imagePath: fileToShow.path,
-                              description: pEntry.description,
-                              project: widget.project,
-                              photoId: pEntry.id,
-                              onDeleted: () {
-                                _load();
-                                Navigator.pop(context); // volver a la galería
-                              },
-                              onDescriptionUpdated: (newDesc) async {
-                                await meta.updateDescription(
-                                    widget.project, pEntry.id, newDesc);
-                                _load();
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                      child: GridTile(
-                        footer: GridTileBar(
-                          backgroundColor: Colors.black54,
-                          title: Text(
-                            pEntry.description.isEmpty
-                                ? '(sin descripción)'
-                                : pEntry.description,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                        child: fileToShow != null
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 4.0, horizontal: 8.0),
+                      child: ListTile(
+                        leading: fileToShow != null
                             ? Image.file(fileToShow,
-                                fit: BoxFit.cover, cacheWidth: 512)
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                cacheWidth: 256)
                             : Container(
+                                width: 80,
+                                height: 80,
                                 color: Colors.grey.shade300,
-                                child: const Icon(Icons.broken_image_outlined)),
+                                child: const Icon(Icons.broken_image_outlined),
+                              ),
+                        title: Text(
+                          pEntry.description.isEmpty
+                              ? '(sin descripción)'
+                              : pEntry.description,
+                        ),
+                        subtitle: Text(
+                          DateFormat('yyyy-MM-dd HH:mm').format(pEntry.takenAt),
+                        ),
+                        onTap: () async {
+                          if (fileToShow == null) return;
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PhotoViewerScreen(
+                                imagePath: fileToShow.path,
+                                description: pEntry.description,
+                                project: widget.project,
+                                photoId: pEntry.id,
+                                onDeleted: () {
+                                  _load();
+                                  Navigator.pop(context); // volver a la galería
+                                },
+                                onDescriptionUpdated: (newDesc) async {
+                                  await meta.updateDescription(
+                                      widget.project, pEntry.id, newDesc);
+                                  _load();
+                                },
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },

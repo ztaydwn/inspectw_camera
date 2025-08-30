@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models.dart';
 import '../services/metadata_service.dart';
 import '../services/storage_service.dart';
@@ -15,16 +16,18 @@ class SearchExplorerScreen extends StatefulWidget {
 }
 
 class _SearchExplorerScreenState extends State<SearchExplorerScreen> {
-  final _metadata = MetadataService();
-  final _storage = StorageService();
+  late final MetadataService _metadata;
+  late final StorageService _storage;
   List<PhotoEntry> _photos = [];
   final Map<String, File> _resolvedFiles = {};
   bool _loading = false;
   final _searchController = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _metadata = context.read<MetadataService>();
+    _storage = StorageService();
     _storage.init();
   }
 

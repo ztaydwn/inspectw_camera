@@ -34,13 +34,13 @@ class MetadataService with ChangeNotifier {
   }
 
   // --- New method to handle background photo saving ---
-  void saveNewPhoto({
+  Future<PhotoEntry?> saveNewPhoto({
     required XFile xFile,
     required String description,
     required String project,
     required String location,
     double? aspect,
-  }) {
+  }) async {
     _savingCount++;
     notifyListeners();
 
@@ -53,13 +53,14 @@ class MetadataService with ChangeNotifier {
       token: RootIsolateToken.instance!,
     );
 
-    compute(savePhotoIsolate, params).then((result) {
+    try {
+      final result = await compute(savePhotoIsolate, params);
       if (result == null) {
         debugPrint('[MetadataService] Isolate failed to save photo');
-        return;
+        return null;
       }
       // Back on the main thread, add the photo to our internal cache
-      addPhoto(
+      final newEntry = await addPhoto(
         project: project,
         location: location,
         fileName: result.fileName,
@@ -67,12 +68,14 @@ class MetadataService with ChangeNotifier {
         description: result.description,
         takenAt: DateTime.now(),
       );
-    }).catchError((e) {
+      return newEntry;
+    } catch (e) {
       debugPrint('[MetadataService] Error saving photo: $e');
-    }).whenComplete(() {
+      return null;
+    } finally {
       _savingCount--;
       notifyListeners();
-    });
+    }
   }
 
   Future<List<String>> listProjects() async {
@@ -193,7 +196,17 @@ class MetadataService with ChangeNotifier {
     return all.where((e) => e.location == location).toList();
   }
 
-  Future<void> addPhoto({
+  Future<PhotoEntry?> getPhotoById(String project, String photoId) async {
+    await _load(project);
+    final all = _cache[project]!;
+    try {
+      return all.firstWhere((p) => p.id == photoId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<PhotoEntry> addPhoto({
     required String project,
     required String location,
     required String fileName,
@@ -215,6 +228,7 @@ class MetadataService with ChangeNotifier {
     _suggestions[project]![description] =
         (_suggestions[project]![description] ?? 0) + 1;
     await _persist(project);
+    return entry;
   }
 
   Future<void> updateDescription(
@@ -491,5 +505,58 @@ class MetadataService with ChangeNotifier {
       'content': data.toJson(),
     });
     notifyListeners();
+  }
+
+  // --- Checklist Methods ---
+
+  Future<Checklist?> getChecklist(String project, String location) async {
+    await _storage.ensureChecklistDir(project);
+    final file = _storage.checklistFile(project, location);
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      if (content.isNotEmpty) {
+        final json = await compute(jsonDecode, content) as Map<String, dynamic>;
+        return Checklist.fromJson(json);
+      }
+    }
+    return null;
+  }
+
+  Future<Checklist> createChecklistFromTemplate(
+      String project, String location, ChecklistTemplate template) async {
+    final newChecklist = Checklist(
+      locationName: location,
+      templateName: template.name,
+      items: template.items
+          .map((itemTemplate) => ChecklistItem(
+                id: _uuid.v4(),
+                title: itemTemplate.title,
+              ))
+          .toList(),
+    );
+    await saveChecklist(project, newChecklist);
+    return newChecklist;
+  }
+
+  Future<void> saveChecklist(String project, Checklist checklist) async {
+    final file = _storage.checklistFile(project, checklist.locationName);
+    await compute(persistMetadataIsolate, {
+      'file': file,
+      'content': checklist.toJson(),
+    });
+    notifyListeners();
+  }
+
+  Future<void> updateChecklistItem(String project, String location,
+      String checklistItemId, String photoId) async {
+    final checklist = await getChecklist(project, location);
+    if (checklist != null) {
+      final itemIndex = checklist.items.indexWhere((item) => item.id == checklistItemId);
+      if (itemIndex != -1) {
+        checklist.items[itemIndex].isCompleted = true;
+        checklist.items[itemIndex].photoId = photoId;
+        await saveChecklist(project, checklist);
+      }
+    }
   }
 }

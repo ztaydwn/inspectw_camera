@@ -60,6 +60,15 @@ class StorageService {
   File projectDataFile(String project) =>
       File('${_appDir.path}/projects/$project/project_data.json');
 
+  Future<Directory> ensureChecklistDir(String project) async {
+    final d = Directory(p.join(_appDir.path, 'projects', project, 'checklists'));
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  File checklistFile(String project, String location) =>
+      File('${_appDir.path}/projects/$project/checklists/$location.json');
+
   /// Returns the public DCIM directory on Android.
   /// Creates the directory if it does not exist.
   ///

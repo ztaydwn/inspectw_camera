@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models.dart';
 import '../services/metadata_service.dart';
 
@@ -8,22 +9,26 @@ class LocationChecklistScreen extends StatefulWidget {
   const LocationChecklistScreen({super.key, required this.project});
 
   @override
-  State<LocationChecklistScreen> createState() => _LocationChecklistScreenState();
+  State<LocationChecklistScreen> createState() =>
+      _LocationChecklistScreenState();
 }
 
 class _LocationChecklistScreenState extends State<LocationChecklistScreen> {
-  final _metadata = MetadataService();
+  late final MetadataService _metadata;
   List<LocationStatus> _locations = [];
   bool _loading = true;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _metadata = context.read<MetadataService>();
     _loadLocations();
   }
 
   Future<void> _loadLocations() async {
-    setState(() { _loading = true; });
+    setState(() {
+      _loading = true;
+    });
     final locations = await _metadata.getLocationStatuses(widget.project);
     setState(() {
       _locations = locations;
@@ -33,7 +38,8 @@ class _LocationChecklistScreenState extends State<LocationChecklistScreen> {
 
   Future<void> _onChanged(LocationStatus status, bool? value) async {
     if (value == null) return;
-    await _metadata.updateLocationStatus(widget.project, status.locationName, value);
+    await _metadata.updateLocationStatus(
+        widget.project, status.locationName, value);
     setState(() {
       status.isCompleted = value;
     });
