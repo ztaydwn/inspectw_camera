@@ -154,63 +154,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
               child: const Text('Cancelar')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, c.text.trim()),
-              child: const Text('Crear')),
+              child: const Text('Crear'))
         ],
       ),
     );
 
     if (name != null && name.isNotEmpty) {
-      try {
-        // Show loading indicator
+      await meta.createLocation(widget.project, name);
+
+      if (template != null) {
+        // This is a checklist-based location.
+        await meta.createChecklistFromTemplate(widget.project, name, template);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Creando ubicación...'),
-              duration: Duration(seconds: 1),
+          // Navigate to the new checklist screen
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChecklistScreen(
+                project: widget.project,
+                location: name,
+              ),
             ),
           );
         }
-
-        // Create location first
-        await meta.createLocation(widget.project, name);
-
-        if (template != null) {
-          // Create the checklist from template
-          await meta.createChecklistFromTemplate(
-              widget.project, name, template);
-
-          // Refresh locations to ensure UI is updated
-          _refreshLocations();
-
-          if (mounted) {
-            // Small delay to ensure everything is persisted
-            await Future.delayed(const Duration(milliseconds: 300));
-
-            // Navigate to the new checklist screen
-            if (mounted) {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChecklistScreen(
-                    project: widget.project,
-                    location: name,
-                  ),
-                ),
-              );
-            }
-          }
-        } else {
-          // For regular locations, just refresh
-          _refreshLocations();
-        }
-      } catch (e) {
-        debugPrint('Error creating location: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al crear ubicación: $e')),
-          );
-        }
       }
+      _refreshLocations();
     }
   }
 
@@ -245,6 +213,76 @@ class _ProjectScreenState extends State<ProjectScreen> {
       }
       _refreshLocations();
     }
+  }
+
+  Future<void> _showLocationOptions(String location) async {
+    final messenger = ScaffoldMessenger.of(context);
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Renombrar'),
+              onTap: () {
+                Navigator.pop(context);
+                _renameLocation(location);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title:
+                  const Text('Eliminar', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                Navigator.pop(context);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Confirmar Eliminación'),
+                    content: Text(
+                        '¿Estás seguro de que quieres eliminar la ubicación "$location"?\n\nTodas las fotos y datos asociados se borrarán permanentemente. Esta acción no se puede deshacer.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancelar'),
+                      ),
+                      FilledButton.tonal(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red.shade100,
+                        ),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Eliminar',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true && mounted) {
+                  try {
+                    await meta.deleteLocation(widget.project, location);
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                            content: Text('Ubicación "$location" eliminada.')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Error al eliminar: $e')),
+                      );
+                    }
+                  }
+                  _refreshLocations();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<Map<String, bool>> _getLocationsWithChecklistStatus() async {
@@ -638,7 +676,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     }
                     _refreshLocations();
                   },
-                  onLongPress: () => _renameLocation(loc),
+                  onLongPress: () => _showLocationOptions(loc),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

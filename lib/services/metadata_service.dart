@@ -158,6 +158,37 @@ class MetadataService with ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteLocation(String project, String location) async {
+    await _load(project);
+
+    // 1. Delete all photos associated with the location
+    final photosInLocation = _cache[project]!
+        .where((p) => p.location == location)
+        .toList(); // Create a copy to avoid concurrent modification issues
+
+    for (final photo in photosInLocation) {
+      await deletePhotoById(project, photo.id);
+    }
+
+    // 2. Delete the checklist file if it exists
+    final checklistFile = _storage.checklistFile(project, location);
+    if (await checklistFile.exists()) {
+      await checklistFile.delete();
+    }
+
+    // 3. Delete the location status
+    await _loadLocationStatus(project);
+    _locationStatusCache[project]?.remove(location);
+    await _persistLocationStatus(project);
+
+    // 4. Delete the location directory from app storage
+    await _storage.deleteLocationDir(project, location);
+
+    // 5. Persist metadata changes and notify listeners
+    await _persist(project);
+    notifyListeners();
+  }
+
   Future<void> _load(String project) async {
     if (_cache.containsKey(project)) return;
 

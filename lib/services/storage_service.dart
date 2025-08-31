@@ -47,6 +47,14 @@ class StorageService {
     }
   }
 
+  Future<void> deleteLocationDir(String project, String location) async {
+    final path = p.join(_appDir.path, 'projects', project, location);
+    final dir = Directory(path);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+  }
+
   File metadataFile(String project) =>
       File('${_appDir.path}/projects/$project/metadata.json');
 

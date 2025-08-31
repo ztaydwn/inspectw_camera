@@ -22,6 +22,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   late final StorageService _storage;
   Checklist? _checklist;
   bool _isLoading = true;
+  bool _isInitialized = false;
 
   @override
   void didChangeDependencies() {
@@ -33,8 +34,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
       _loadChecklist();
     }
   }
-
-  bool _isInitialized = false;
 
   Future<void> _loadChecklist() async {
     setState(() => _isLoading = true);
@@ -77,13 +76,54 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _takePhoto(ChecklistItem item) async {
+    final String subgroup = item.title;
+    final descriptionController = TextEditingController();
+
+    final additionalText = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(subgroup),
+        content: TextField(
+          controller: descriptionController,
+          autofocus: true,
+          decoration: const InputDecoration(
+              labelText: 'Añadir información adicional...'),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(ctx, ''), // Return empty string on cancel
+            child: const Text('Omitir'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx, descriptionController.text.trim());
+            },
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+
+    if (additionalText == null) return; // User dismissed dialog
+
+    final String finalDescription;
+    if (additionalText.isEmpty) {
+      finalDescription = subgroup;
+    } else {
+      finalDescription = '$subgroup + $additionalText';
+    }
+
+    if (!mounted) return;
+
     final newPhoto = await Navigator.push<PhotoEntry>(
       context,
       MaterialPageRoute(
         builder: (context) => CameraScreen(
           project: widget.project,
           location: widget.location,
-          initialDescription: item.title,
+          initialDescription: finalDescription,
         ),
       ),
     );
