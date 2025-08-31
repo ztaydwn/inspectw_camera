@@ -88,7 +88,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           autofocus: true,
           decoration: const InputDecoration(
               labelText: 'Añadir información adicional...'),
-          maxLines: 3,
+          maxLines: 1,
         ),
         actions: [
           TextButton(
@@ -139,6 +139,15 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     }
   }
 
+  Future<void> _toggleItemCompletion(ChecklistItem item) async {
+    await _meta.toggleChecklistItemStatus(
+      widget.project,
+      widget.location,
+      item.id,
+    );
+    _loadChecklist();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,6 +163,11 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                   itemBuilder: (context, index) {
                     final item = _checklist!.items[index];
                     return ListTile(
+                      onTap: () {
+                        if (item.photoId == null) {
+                          _toggleItemCompletion(item);
+                        }
+                      },
                       leading: Icon(item.isCompleted
                           ? Icons.check_box
                           : Icons.check_box_outline_blank),

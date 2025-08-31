@@ -590,4 +590,21 @@ class MetadataService with ChangeNotifier {
       }
     }
   }
+
+  Future<void> toggleChecklistItemStatus(
+      String project, String location, String checklistItemId) async {
+    final checklist = await getChecklist(project, location);
+    if (checklist != null) {
+      final itemIndex =
+          checklist.items.indexWhere((item) => item.id == checklistItemId);
+      if (itemIndex != -1) {
+        final item = checklist.items[itemIndex];
+        // Only allow toggling if there is no photo associated.
+        if (item.photoId == null) {
+          item.isCompleted = !item.isCompleted;
+          await saveChecklist(project, checklist);
+        }
+      }
+    }
+  }
 }
