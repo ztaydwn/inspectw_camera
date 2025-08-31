@@ -119,8 +119,7 @@ class MetadataService with ChangeNotifier {
         .where((name) => name != '')
         .where((name) => name != 'projects') // sanity
         .where((name) => name != '')
-        .toList()
-      ..sort();
+        .toList();
   }
 
   Future<void> createLocation(String project, String location) async {
@@ -486,7 +485,7 @@ class MetadataService with ChangeNotifier {
     }
     _locationStatusCache[project] = savedStatuses;
 
-    return allStatuses..sort((a, b) => a.locationName.compareTo(b.locationName));
+    return allStatuses;
   }
 
   Future<void> updateLocationStatus(

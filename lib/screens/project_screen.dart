@@ -97,17 +97,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
     final statuses = await meta.getLocationStatuses(widget.project);
     final List<_LocationInfo> locationInfoList = [];
     for (final status in statuses) {
-      final isChecklist = await storage
-          .checklistFile(widget.project, status.locationName)
-          .exists();
+      final isChecklist =
+          await storage.checklistFile(widget.project, status.locationName).exists();
       locationInfoList.add(_LocationInfo(
         name: status.locationName,
         isChecklist: isChecklist,
         isCompleted: status.isCompleted,
       ));
     }
-    // Sort by name
-    locationInfoList.sort((a, b) => a.name.compareTo(b.name));
     return locationInfoList;
   }
 
