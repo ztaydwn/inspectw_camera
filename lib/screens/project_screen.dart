@@ -711,7 +711,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => CameraScreen(
-                                      project: widget.project, location: loc),
+                                      project: widget.project, 
+                                      location: loc,
+                                      stayAfterCapture: true),
                                 ),
                               );
                             }

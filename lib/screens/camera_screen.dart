@@ -14,12 +14,14 @@ class CameraScreen extends StatefulWidget {
   final String project;
   final String location;
   final String? initialDescription;
+  final bool stayAfterCapture;
 
   const CameraScreen({
     super.key,
     required this.project,
     required this.location,
     this.initialDescription,
+    this.stayAfterCapture = false,
   });
 
   @override
@@ -140,7 +142,9 @@ class _CameraScreenState extends State<CameraScreen> {
           content: Text('Foto capturada. Guardando...'),
           duration: Duration(seconds: 2),
         ));
-        Navigator.pop(context, newPhoto);
+        if (!widget.stayAfterCapture) {
+          Navigator.pop(context, newPhoto);
+        }
       }
     } on CameraException catch (e) {
       if (mounted) {
