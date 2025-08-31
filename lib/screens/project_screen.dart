@@ -44,6 +44,18 @@ Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
   return paths;
 }
 
+class _LocationInfo {
+  final String name;
+  final bool isChecklist;
+  final bool isCompleted;
+
+  _LocationInfo({
+    required this.name,
+    required this.isChecklist,
+    required this.isCompleted,
+  });
+}
+
 class ProjectScreen extends StatefulWidget {
   final String project;
   const ProjectScreen({super.key, required this.project});
@@ -58,7 +70,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
   bool _isExporting = false;
   bool _isUploading = false;
   bool _isCopyingFiles = false;
-  Future<Map<String, bool>>? _locationsFuture;
+  Future<List<_LocationInfo>>? _locationsFuture;
 
   @override
   void initState() {
@@ -72,13 +84,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
     super.didChangeDependencies();
     meta = context.read<MetadataService>();
     // Initialize the future here where meta is available
-    _locationsFuture ??= _getLocationsWithChecklistStatus();
+    _locationsFuture ??= _getLocationData();
   }
 
   void _refreshLocations() {
     setState(() {
-      _locationsFuture = _getLocationsWithChecklistStatus();
+      _locationsFuture = _getLocationData();
     });
+  }
+
+  Future<List<_LocationInfo>> _getLocationData() async {
+    final statuses = await meta.getLocationStatuses(widget.project);
+    final List<_LocationInfo> locationInfoList = [];
+    for (final status in statuses) {
+      final isChecklist = await storage
+          .checklistFile(widget.project, status.locationName)
+          .exists();
+      locationInfoList.add(_LocationInfo(
+        name: status.locationName,
+        isChecklist: isChecklist,
+        isCompleted: status.isCompleted,
+      ));
+    }
+    // Sort by name
+    locationInfoList.sort((a, b) => a.name.compareTo(b.name));
+    return locationInfoList;
   }
 
   /// FUNCION PARA COPIAR ARCHIVOS DE DATOS
@@ -139,8 +169,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
     final c = TextEditingController();
     final name = await showDialog<String?>(
-      context: context,
-      builder: (ctx) => AlertDialog(
+      context:
+          context, //decia ctx, ver si se tiene que cambiar abajo a context tambien
+      builder: (context) => AlertDialog(
         title: Text(template == null
             ? 'Nueva Ubicación'
             : 'Nombre para checklist: ${template.name}'),
@@ -150,10 +181,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
             decoration: const InputDecoration(labelText: 'Nombre')),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
+              onPressed: () => Navigator.pop(context, null),
               child: const Text('Cancelar')),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              onPressed: () => Navigator.pop(context, c.text.trim()),
               child: const Text('Crear'))
         ],
       ),
@@ -283,17 +314,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
         );
       },
     );
-  }
-
-  Future<Map<String, bool>> _getLocationsWithChecklistStatus() async {
-    final locations = await meta.listLocations(widget.project);
-    final Map<String, bool> locationStatus = {};
-    for (final loc in locations) {
-      final isChecklist =
-          await storage.checklistFile(widget.project, loc).exists();
-      locationStatus[loc] = isChecklist;
-    }
-    return locationStatus;
   }
 
   Future<String?> _buildZipForProject() async {
@@ -514,7 +534,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   builder: (context) =>
                       LocationChecklistScreen(project: widget.project),
                 ),
-              );
+              ).then((_) => _refreshLocations());
             },
           ),
           IconButton(
@@ -595,7 +615,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<Map<String, bool>>(
+      body: FutureBuilder<List<_LocationInfo>>(
         future: _locationsFuture,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -609,8 +629,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
               ),
             );
           }
-          final items = snap.data ?? {};
-          final locations = items.keys.toList();
+          final locations = snap.data ?? [];
 
           if (locations.isEmpty) {
             // UI mejorada para cuando no hay ubicaciones
@@ -649,8 +668,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
             ),
             itemCount: locations.length,
             itemBuilder: (_, i) {
-              final loc = locations[i];
-              final isChecklist = items[loc]!;
+              final locInfo = locations[i];
+              final loc = locInfo.name;
+              final isChecklist = locInfo.isChecklist;
+              final isCompleted = locInfo.isCompleted;
+
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -690,6 +712,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        trailing: isCompleted
+                            ? const Icon(Icons.check_circle,
+                                color: Colors.green)
+                            : null,
                       ),
                       const Spacer(),
                       Padding(
@@ -711,7 +737,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => CameraScreen(
-                                      project: widget.project, 
+                                      project: widget.project,
                                       location: loc,
                                       stayAfterCapture: true),
                                 ),
