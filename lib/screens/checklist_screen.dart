@@ -82,7 +82,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     final additionalText = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(subgroup),
+        title: Text(subgroup, style: const TextStyle(fontSize: 16.0)),
         content: TextField(
           controller: descriptionController,
           autofocus: true,
