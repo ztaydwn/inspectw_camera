@@ -365,6 +365,23 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+  String _shortPresetName(ResolutionPreset p) {
+    switch (p) {
+      case ResolutionPreset.max:
+        return 'Max';
+      case ResolutionPreset.ultraHigh:
+        return 'UHD';
+      case ResolutionPreset.veryHigh:
+        return 'VHD';
+      case ResolutionPreset.high:
+        return 'HD';
+      case ResolutionPreset.medium:
+        return 'SD';
+      case ResolutionPreset.low:
+        return 'Low';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cam = controller;
@@ -409,14 +426,22 @@ class _CameraScreenState extends State<CameraScreen> {
             onPressed: _toggleFlash,
           ),
           PopupMenuButton<ResolutionPreset>(
-            icon: const Icon(Icons.hd),
             onSelected: (p) async {
-              preset = p;
+              setState(() {
+                preset = p;
+              });
               await _startController();
             },
             itemBuilder: (ctx) => ResolutionPreset.values
                 .map((p) => PopupMenuItem(value: p, child: Text(p.name)))
                 .toList(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Text(
+                _shortPresetName(preset),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
           ),
           PopupMenuButton<AspectOpt>(
             icon: const Icon(Icons.aspect_ratio),
