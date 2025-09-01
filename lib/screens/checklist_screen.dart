@@ -126,8 +126,9 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
               ? const Center(child: Text('No se pudo cargar el checklist.'))
               : RefreshIndicator(
                   onRefresh: _loadChecklist,
-                  child: ListView.builder(
+                  child: ListView.separated(
                     itemCount: _checklist!.items.length,
+                    separatorBuilder: (context, index) => const Divider(),
                     itemBuilder: (context, index) {
                       final item = _checklist!.items[index];
                       final Widget icon;
@@ -140,7 +141,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                           icon = const Icon(Icons.indeterminate_check_box,
                               color: Colors.red);
                           break;
-                        case ChecklistItemStatus.pending:
+                        case ChecklistItemStatus.pending: // se borro default
                           icon = const Icon(Icons.check_box_outline_blank);
                           break;
                       }
@@ -148,7 +149,8 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                       return ListTile(
                         onTap: () => _cycleItemStatus(item),
                         leading: icon,
-                        title: Text(item.title),
+                        title: Text(item.title,
+                            style: const TextStyle(fontSize: 14.0)),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
