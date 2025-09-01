@@ -47,35 +47,61 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snap) {
           final items = snap.data ?? [];
           if (items.isEmpty) {
-            return const Center(child: Text('Sin proyectos. Crea el primero.'));
+            final theme = Theme.of(context);
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.folder_off_outlined,
+                    size: 80,
+                    color: theme.colorScheme.secondary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No hay proyectos',
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Crea tu primer proyecto para empezar a organizar tus inspecciones.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            );
           }
           return ListView.separated(
             itemCount: items.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final p = items[i];
-              return ListTile(
-                title: Text(p),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProjectScreen(project: p))),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Eliminar proyecto'),
-                        content: Text('¿Eliminar "$p"? Esta acción es irreversible.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
-                        ],
-                      ),
-                    );
-                    if (ok == true) {
-                      await meta.deleteProject(p);
-                      setState(() {});
-                    }
-                  },
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+                child: ListTile(
+                  leading: const Icon(Icons.folder_open),
+                  title: Text(p),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProjectScreen(project: p))),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Eliminar proyecto'),
+                          content: Text('¿Eliminar "$p"? Esta acción es irreversible.'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+                          ],
+                        ),
+                      );
+                      if (ok == true) {
+                        await meta.deleteProject(p);
+                        setState(() {});
+                      }
+                    },
+                  ),
                 ),
               );
             },
