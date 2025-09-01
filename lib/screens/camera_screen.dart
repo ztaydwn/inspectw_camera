@@ -13,14 +13,14 @@ enum AspectOpt { sensor, a16x9, a4x3, a1x1 }
 class CameraScreen extends StatefulWidget {
   final String project;
   final String location;
-  final String? initialDescription;
+  final String? preselectedSubgroup;
   final bool stayAfterCapture;
 
   const CameraScreen({
     super.key,
     required this.project,
     required this.location,
-    this.initialDescription,
+    this.preselectedSubgroup,
     this.stayAfterCapture = false,
   });
 
@@ -126,7 +126,7 @@ class _CameraScreenState extends State<CameraScreen> {
       final xFile = await cam.takePicture();
       debugPrint('[Camera] temp: ${xFile.path}');
 
-      final desc = widget.initialDescription ?? await _askForDescription();
+      final desc = await _getPhotoDescription();
       if (desc == null) return; // User cancelled
 
       final newPhoto = await metadataService.saveNewPhoto(
@@ -159,102 +159,114 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  Future<String?> _askForDescription() async {
-    // (This function remains the same as before)
-    // 1. Mostrar lista de grupos principales
-    final selectedGroup = await showModalBottomSheet<String?>(
-      context: context,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Selecciona un grupo:',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: kDescriptionGroups.keys.map((group) {
-                  return ListTile(
-                    title: Text(group),
-                    onTap: () => Navigator.pop(ctx, group),
-                  );
-                }).toList(),
+  Future<String?> _getPhotoDescription() async {
+    String? selectedSubgroup;
+
+    // If a subgroup is preselected (from a checklist), use it.
+    // Otherwise, show the full group/subgroup selection flow.
+    if (widget.preselectedSubgroup != null) {
+      selectedSubgroup = widget.preselectedSubgroup;
+    } else {
+      // 1. Mostrar lista de grupos principales
+      final selectedGroup = await showModalBottomSheet<String?>(
+        context: context,
+        builder: (ctx) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Selecciona un grupo:',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (selectedGroup == null || !mounted) return null;
-
-    // 2. Obtener los subgrupos del grupo seleccionado
-    final subgroups = kDescriptionGroups[selectedGroup] ?? [];
-    if (subgroups.isEmpty) return null;
-
-    // 3. Mostrar lista de subgrupos
-    final selectedSubgroup = await showModalBottomSheet<String?>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.8,
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.pop(ctx),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: kDescriptionGroups.keys.map((group) {
+                    return ListTile(
+                      title: Text(group),
+                      onTap: () => Navigator.pop(ctx, group),
+                    );
+                  }).toList(),
                 ),
-                Expanded(
-                  child: Text(
-                    selectedGroup,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (selectedGroup == null || !mounted) return null;
+
+      // 2. Obtener los subgrupos del grupo seleccionado
+      final subgroups = kDescriptionGroups[selectedGroup] ?? [];
+      if (subgroups.isEmpty) {
+        selectedSubgroup = selectedGroup;
+      } else {
+        // 3. Mostrar lista de subgrupos
+        final sub = await showModalBottomSheet<String?>(
+          context: context,
+          isScrollControlled: true,
+          builder: (ctx) => Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.8,
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                    Expanded(
+                      child: Text(
+                        selectedGroup,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: subgroups.length,
+                    itemBuilder: (context, index) {
+                      final subgroup = subgroups[index];
+                      return ListTile(
+                        title: Text(
+                          subgroup,
+                          style: const TextStyle(fontSize: 14),
                         ),
+                        onTap: () => Navigator.pop(ctx, subgroup),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: subgroups.length,
-                itemBuilder: (context, index) {
-                  final subgroup = subgroups[index];
-                  return ListTile(
-                    title: Text(
-                      subgroup,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    onTap: () => Navigator.pop(ctx, subgroup),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
+        if (sub == null || !mounted) return null;
+        selectedSubgroup = sub;
+      }
+    }
 
-    if (selectedSubgroup == null || !mounted) return null;
+    if (selectedSubgroup == null) return null;
 
     // 4. Usar DescriptionInput para agregar información adicional
     final additionalText = await showModalBottomSheet<String?>(

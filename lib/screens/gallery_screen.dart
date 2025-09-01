@@ -13,8 +13,14 @@ import 'photo_viewer_screen.dart';
 class GalleryScreen extends StatefulWidget {
   final String project;
   final String location;
-  const GalleryScreen(
-      {super.key, required this.project, required this.location});
+  final String? descriptionPrefix;
+
+  const GalleryScreen({
+    super.key,
+    required this.project,
+    required this.location,
+    this.descriptionPrefix,
+  });
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -76,8 +82,17 @@ class _GalleryScreenState extends State<GalleryScreen> {
       }
     }
 
-    final photoEntries =
-        await meta.listPhotos(widget.project, location: widget.location);
+    final List<PhotoEntry> photoEntries;
+    if (widget.descriptionPrefix != null) {
+      photoEntries = await meta.listPhotosWithDescriptionPrefix(
+        widget.project,
+        widget.location,
+        widget.descriptionPrefix!,
+      );
+    } else {
+      photoEntries =
+          await meta.listPhotos(widget.project, location: widget.location);
+    }
 
     _resolvedFiles.clear();
     for (final pEntry in photoEntries) {
@@ -98,8 +113,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.descriptionPrefix ?? widget.location;
+
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.project} / ${widget.location}')),
+      appBar: AppBar(title: Text('${widget.project} / $title')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : photos.isEmpty

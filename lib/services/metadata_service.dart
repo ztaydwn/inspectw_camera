@@ -236,6 +236,19 @@ class MetadataService with ChangeNotifier {
     }
   }
 
+  Future<List<PhotoEntry>> listPhotosWithDescriptionPrefix(
+      String project, String location, String prefix) async {
+    await _load(project);
+    final all = _cache[project]!;
+    final photosInLocation = all.where((e) => e.location == location);
+
+    final normalizedPrefix = prefix.toLowerCase();
+
+    return photosInLocation.where((photo) {
+      return photo.description.toLowerCase().startsWith(normalizedPrefix);
+    }).toList();
+  }
+
   Future<PhotoEntry> addPhoto({
     required String project,
     required String location,
