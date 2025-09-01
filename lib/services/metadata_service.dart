@@ -596,14 +596,14 @@ class MetadataService with ChangeNotifier {
     if (checklist != null) {
       final itemIndex = checklist.items.indexWhere((item) => item.id == checklistItemId);
       if (itemIndex != -1) {
-        checklist.items[itemIndex].isCompleted = true;
+        checklist.items[itemIndex].status = ChecklistItemStatus.completed;
         checklist.items[itemIndex].photoId = photoId;
         await saveChecklist(project, checklist);
       }
     }
   }
 
-  Future<void> toggleChecklistItemStatus(
+  Future<void> cycleChecklistItemStatus(
       String project, String location, String checklistItemId) async {
     final checklist = await getChecklist(project, location);
     if (checklist != null) {
@@ -611,11 +611,10 @@ class MetadataService with ChangeNotifier {
           checklist.items.indexWhere((item) => item.id == checklistItemId);
       if (itemIndex != -1) {
         final item = checklist.items[itemIndex];
-        // Only allow toggling if there is no photo associated.
-        if (item.photoId == null) {
-          item.isCompleted = !item.isCompleted;
-          await saveChecklist(project, checklist);
-        }
+        // Cycle: pending -> completed -> omitted -> pending
+        final nextStatusIndex = (item.status.index + 1) % ChecklistItemStatus.values.length;
+        item.status = ChecklistItemStatus.values[nextStatusIndex];
+        await saveChecklist(project, checklist);
       }
     }
   }

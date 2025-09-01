@@ -46,7 +46,6 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
   }
 
   Future<void> _takePhoto(ChecklistItem item) async {
-    // Navigate to camera with preselected subgroup and stay after capture
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -54,18 +53,15 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
           project: widget.project,
           location: widget.location,
           preselectedSubgroup: item.title,
-          stayAfterCapture: true, // Stay on camera screen
+          stayAfterCapture: true,
         ),
       ),
     );
-    // Since we can take multiple photos, we don't link a single photo back
-    // to the checklist item here. We also don't mark it as complete automatically.
-    // We refresh the checklist to show any status changes made manually.
     _loadChecklist();
   }
 
-  Future<void> _toggleItemCompletion(ChecklistItem item) async {
-    await _meta.toggleChecklistItemStatus(
+  Future<void> _cycleItemStatus(ChecklistItem item) async {
+    await _meta.cycleChecklistItemStatus(
       widget.project,
       widget.location,
       item.id,
@@ -73,11 +69,56 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
     _loadChecklist();
   }
 
+  void _showLegend() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leyenda de Símbolos'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: Icon(Icons.check_box_outline_blank, color: Colors.grey),
+              title: Text('Pendiente'),
+              subtitle: Text('La observación aún no ha sido revisada.'),
+            ),
+            ListTile(
+              leading: Icon(Icons.check_box, color: Colors.green),
+              title: Text('Completado'),
+              subtitle: Text(
+                  'La observación fue revisada y se tomaron las acciones necesarias.'),
+            ),
+            ListTile(
+              leading: Icon(Icons.indeterminate_check_box, color: Colors.red),
+              title: Text('Omitido / No Aplica'),
+              subtitle: Text(
+                  'La observación no aplica para esta ubicación o fue omitida.'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Checklist: ${widget.location}'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: _showLegend,
+            tooltip: 'Mostrar Leyenda',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -89,19 +130,28 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                     itemCount: _checklist!.items.length,
                     itemBuilder: (context, index) {
                       final item = _checklist!.items[index];
+                      final Widget icon;
+                      switch (item.status) {
+                        case ChecklistItemStatus.completed:
+                          icon =
+                              const Icon(Icons.check_box, color: Colors.green);
+                          break;
+                        case ChecklistItemStatus.omitted:
+                          icon = const Icon(Icons.indeterminate_check_box,
+                              color: Colors.red);
+                          break;
+                        case ChecklistItemStatus.pending:
+                          icon = const Icon(Icons.check_box_outline_blank);
+                          break;
+                      }
+
                       return ListTile(
-                        onTap: () {
-                          // Allow toggling completion regardless of photo
-                          _toggleItemCompletion(item);
-                        },
-                        leading: Icon(item.isCompleted
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank),
+                        onTap: () => _cycleItemStatus(item),
+                        leading: icon,
                         title: Text(item.title),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // FutureBuilder to show photo count and link to gallery
                             FutureBuilder<List<PhotoEntry>>(
                               future: _meta.listPhotosWithDescriptionPrefix(
                                 widget.project,
@@ -109,12 +159,14 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                                 item.title,
                               ),
                               builder: (context, snapshot) {
-                                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                                if (!snapshot.hasData ||
+                                    snapshot.data!.isEmpty) {
                                   return const SizedBox.shrink();
                                 }
                                 final count = snapshot.data!.length;
                                 return TextButton.icon(
-                                  icon: const Icon(Icons.photo_library_outlined, size: 16),
+                                  icon: const Icon(Icons.photo_library_outlined,
+                                      size: 16),
                                   label: Text('$count'),
                                   onPressed: () {
                                     Navigator.push(
@@ -126,7 +178,7 @@ class _ChecklistScreenState extends State<ChecklistScreen> {
                                           descriptionPrefix: item.title,
                                         ),
                                       ),
-                                    ).then((_) => _loadChecklist()); // Refresh on return
+                                    ).then((_) => _loadChecklist());
                                   },
                                 );
                               },

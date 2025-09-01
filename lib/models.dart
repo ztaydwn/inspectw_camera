@@ -141,30 +141,41 @@ class ProjectData {
       );
 }
 
+enum ChecklistItemStatus { pending, completed, omitted }
+
 class ChecklistItem {
   final String id;
   final String title;
-  bool isCompleted;
+  ChecklistItemStatus status;
   String? photoId; // ID of the PhotoEntry taken for this item
 
   ChecklistItem({
     required this.id,
     required this.title,
-    this.isCompleted = false,
+    this.status = ChecklistItemStatus.pending,
     this.photoId,
   });
 
-  factory ChecklistItem.fromJson(Map<String, dynamic> json) => ChecklistItem(
-        id: json['id'],
-        title: json['title'],
-        isCompleted: json['isCompleted'] ?? false,
-        photoId: json['photoId'],
-      );
+  factory ChecklistItem.fromJson(Map<String, dynamic> json) {
+    ChecklistItemStatus status = ChecklistItemStatus.pending;
+    if (json.containsKey('status')) {
+      status = ChecklistItemStatus.values[json['status']];
+    } else if (json['isCompleted'] == true) {
+      status = ChecklistItemStatus.completed;
+    }
+
+    return ChecklistItem(
+      id: json['id'],
+      title: json['title'],
+      status: status,
+      photoId: json['photoId'],
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
-        'isCompleted': isCompleted,
+        'status': status.index,
         'photoId': photoId,
       };
 }

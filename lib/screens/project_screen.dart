@@ -519,7 +519,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Proyecto: ${widget.project}'),
+        title: Text('Proyecto: ${widget.project}', style: const TextStyle(fontSize: 18.0)),
         actions: [
           IconButton(
             icon: const Icon(Icons.playlist_add_check),
