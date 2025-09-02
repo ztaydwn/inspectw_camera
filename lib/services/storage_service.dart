@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter/foundation.dart'; // Add this import for debugPrint
+import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart'; // Para kAppFolder
 
 class StorageService {
@@ -16,30 +17,75 @@ class StorageService {
 
   Future<void> init() async {
     if (_ready) return;
-    _appDir =
-        await getApplicationDocumentsDirectory(); // /data/user/0/<pkg>/app_flutter
-    await Directory(p.join(_appDir.path, 'projects')).create(recursive: true);
+
+    debugPrint('StorageService init started.');
+
+    if (Platform.isAndroid) {
+      // 1. Request permissions
+      final status = await Permission.storage.request();
+      if (status.isGranted) {
+        debugPrint('Storage permission granted.');
+        // 2. Try to get the external storage directory
+        final externalDir = await getExternalStorageDirectory();
+        if (externalDir != null) {
+          _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
+          debugPrint('Using external storage path: ${_appDir.path}');
+        } else {
+          // Fallback to app documents if external storage is not available
+          _appDir = await getApplicationDocumentsDirectory();
+          debugPrint('External storage not available, falling back to app documents: ${_appDir.path}');
+        }
+      } else {
+        debugPrint('Storage permission denied.');
+        // If permission is denied, fallback to the safer app-specific directory
+        _appDir = await getApplicationDocumentsDirectory();
+        debugPrint('Falling back to app documents due to denied permissions: ${_appDir.path}');
+      }
+    } else if (Platform.isIOS) {
+      // iOS doesn't require special permissions for the app's documents directory
+      final externalDir = await getApplicationDocumentsDirectory();
+       _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
+       debugPrint('Using app documents directory for iOS: ${_appDir.path}');
+    }
+    else {
+      // For desktop platforms, use application documents directory
+      _appDir = await getApplicationDocumentsDirectory();
+      debugPrint('Using app documents directory for desktop: ${_appDir.path}');
+    }
+
+    try {
+      await _appDir.create(recursive: true); // Create the base directory for projects
+      debugPrint('Project directory ensured at: ${_appDir.path}');
+    } catch (e) {
+      debugPrint('Error creating project directory: $e');
+      // If creation fails, fallback to a safe directory
+      _appDir = await getApplicationDocumentsDirectory();
+      await _appDir.create(recursive: true);
+      debugPrint('Fell back to app documents directory after creation error: ${_appDir.path}');
+    }
+    
     _ready = true;
+    debugPrint('StorageService init finished.');
   }
 
   String get rootPath => _appDir.path;
 
   Future<Directory> ensureProject(String project) async {
-    final d = Directory(p.join(_appDir.path, 'projects', project));
+    final d = Directory(p.join(_appDir.path, project));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   Future<Directory> ensureLocation(String project, String location) async {
-    final d = Directory(p.join(_appDir.path, 'projects', project, location));
+    final d = Directory(p.join(_appDir.path, project, location));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   Future<void> renameLocation(
       String project, String oldLocation, String newLocation) async {
-    final oldPath = p.join(_appDir.path, 'projects', project, oldLocation);
-    final newPath = p.join(_appDir.path, 'projects', project, newLocation);
+    final oldPath = p.join(_appDir.path, project, oldLocation);
+    final newPath = p.join(_appDir.path, project, newLocation);
 
     final oldDir = Directory(oldPath);
     if (await oldDir.exists()) {
@@ -48,7 +94,7 @@ class StorageService {
   }
 
   Future<void> deleteLocationDir(String project, String location) async {
-    final path = p.join(_appDir.path, 'projects', project, location);
+    final path = p.join(_appDir.path, project, location);
     final dir = Directory(path);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
@@ -56,26 +102,26 @@ class StorageService {
   }
 
   File metadataFile(String project) =>
-      File('${_appDir.path}/projects/$project/metadata.json');
+      File('${_appDir.path}/$project/metadata.json');
 
   /// JSON con el conteo/sugerencias de descripciones (mapa: "texto" -> usos)
   File descriptionsFile(String project) =>
-      File('${_appDir.path}/projects/$project/descriptions.json');
+      File('${_appDir.path}/$project/descriptions.json');
 
   File locationStatusFile(String project) =>
-      File('${_appDir.path}/projects/$project/location_status.json');
+      File('${_appDir.path}/$project/location_status.json');
 
   File projectDataFile(String project) =>
-      File('${_appDir.path}/projects/$project/project_data.json');
+      File('${_appDir.path}/$project/project_data.json');
 
   Future<Directory> ensureChecklistDir(String project) async {
-    final d = Directory(p.join(_appDir.path, 'projects', project, 'checklists'));
+    final d = Directory(p.join(_appDir.path, project, 'checklists'));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   File checklistFile(String project, String location) =>
-      File('${_appDir.path}/projects/$project/checklists/$location.json');
+      File('${_appDir.path}/$project/checklists/$location.json');
 
   /// Returns the public DCIM directory on Android.
   /// Creates the directory if it does not exist.
@@ -160,7 +206,7 @@ class StorageService {
 
   Future<int> projectSizeBytes(String project) async {
     await init();
-    final dir = Directory(p.join(_appDir.path, 'projects', project));
+    final dir = Directory(p.join(_appDir.path, project));
     if (!await dir.exists()) return 0;
     int total = 0;
     await for (final f in dir.list(recursive: true)) {

@@ -79,7 +79,7 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<List<String>> listProjects() async {
-    final root = Directory('${_storage.rootPath}/projects');
+    final root = Directory(_storage.rootPath);
     if (!await root.exists()) return [];
     return root
         .listSync()
