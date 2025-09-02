@@ -3,7 +3,7 @@ class PhotoEntry {
   final String project;
   String location;
   final String fileName;
-  String relativePath; // e.g. projects/{project}/{location}/IMG_*.jpg
+  String relativePath; // e.g. /storage/emulated/0/DCIM/InspectW_Projects/{project}/{location}/IMG_*.jpg
   String description;
   final DateTime takenAt;
 

@@ -95,18 +95,15 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<void> deleteProject(String project) async {
-    final dir = Directory('${_storage.rootPath}/projects/$project');
+    final dir = Directory(p.join(_storage.rootPath, project));
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
     _cache.remove(project);
     _suggestions.remove(project);
     _locationStatusCache.remove(project);
-    // Also delete the project data file
-    final dataFile = _storage.projectDataFile(project);
-    if (await dataFile.exists()) {
-      await dataFile.delete();
-    }
+    // The project directory is deleted recursively, so we don't need to
+    // delete individual files anymore.
   }
 
   Future<List<String>> listLocations(String project) async {

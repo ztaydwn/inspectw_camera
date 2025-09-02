@@ -4,7 +4,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter/foundation.dart'; // Add this import for debugPrint
-import 'package:permission_handler/permission_handler.dart';
 import '../constants.dart'; // Para kAppFolder
 
 class StorageService {
@@ -18,54 +17,22 @@ class StorageService {
   Future<void> init() async {
     if (_ready) return;
 
-    debugPrint('StorageService init started.');
-
-    if (Platform.isAndroid) {
-      // 1. Request permissions
-      final status = await Permission.storage.request();
-      if (status.isGranted) {
-        debugPrint('Storage permission granted.');
-        // 2. Try to get the external storage directory
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir != null) {
-          _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
-          debugPrint('Using external storage path: ${_appDir.path}');
-        } else {
-          // Fallback to app documents if external storage is not available
-          _appDir = await getApplicationDocumentsDirectory();
-          debugPrint('External storage not available, falling back to app documents: ${_appDir.path}');
-        }
-      } else {
-        debugPrint('Storage permission denied.');
-        // If permission is denied, fallback to the safer app-specific directory
+    if (Platform.isAndroid || Platform.isIOS) {
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir == null) {
+        // Fallback to app documents if external storage is not available
         _appDir = await getApplicationDocumentsDirectory();
-        debugPrint('Falling back to app documents due to denied permissions: ${_appDir.path}');
+        debugPrint('External storage not available, falling back to app documents.');
+      } else {
+        _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
       }
-    } else if (Platform.isIOS) {
-      // iOS doesn't require special permissions for the app's documents directory
-      final externalDir = await getApplicationDocumentsDirectory();
-       _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
-       debugPrint('Using app documents directory for iOS: ${_appDir.path}');
-    }
-    else {
+    } else {
       // For desktop platforms, use application documents directory
       _appDir = await getApplicationDocumentsDirectory();
-      debugPrint('Using app documents directory for desktop: ${_appDir.path}');
     }
 
-    try {
-      await _appDir.create(recursive: true); // Create the base directory for projects
-      debugPrint('Project directory ensured at: ${_appDir.path}');
-    } catch (e) {
-      debugPrint('Error creating project directory: $e');
-      // If creation fails, fallback to a safe directory
-      _appDir = await getApplicationDocumentsDirectory();
-      await _appDir.create(recursive: true);
-      debugPrint('Fell back to app documents directory after creation error: ${_appDir.path}');
-    }
-    
+    await _appDir.create(recursive: true); // Create the base directory for projects
     _ready = true;
-    debugPrint('StorageService init finished.');
   }
 
   String get rootPath => _appDir.path;

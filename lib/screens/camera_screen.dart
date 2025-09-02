@@ -31,7 +31,7 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   CameraController? controller;
   List<CameraDescription> cameras = [];
-  ResolutionPreset preset = ResolutionPreset.max;
+  ResolutionPreset preset = ResolutionPreset.veryHigh;
   FlashMode _flashMode = FlashMode.off;
   double zoom = 1.0, minZoom = 1.0, maxZoom = 4.0;
   int selectedBackIndex = 0;
@@ -439,7 +439,7 @@ class _CameraScreenState extends State<CameraScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Text(
                 _shortPresetName(preset),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
               ),
             ),
           ),
