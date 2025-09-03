@@ -104,17 +104,16 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
   if (processed == null) return null;
 
   await MediaStore.ensureInitialized();
-  // Guardar fotos en DCIM/<proyecto>/<ubicacion> sin carpeta fija de app.
-  // Usamos el nombre del proyecto como carpeta raíz bajo DCIM.
-  MediaStore.appFolder = params.project;
+  // Guardar fotos en DCIM/<proyecto>/<ubicacion>.
+  // Usamos relativePath con "proyecto/ubicacion"; el appFolder no se usa por DCIM.
+  MediaStore.appFolder = kAppFolder; // mantener consistente con inicialización
   final mediaStore = MediaStore();
   final saveInfo = await mediaStore.saveFile(
     tempFilePath: processed.filePath,
     dirType: DirType.photo,
     dirName: DirName.dcim,
-    // Con appFolder = proyecto, el relativePath queda siendo solo la ubicación
-    // y el resultado final es DCIM/<proyecto>/<ubicacion>.
-    relativePath: params.location,
+    // Usar la ruta relativa completa para crear DCIM/<proyecto>/<ubicacion>.
+    relativePath: '${params.project}/${params.location}',
   );
 
   // Clean up temp file
