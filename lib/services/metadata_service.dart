@@ -95,7 +95,7 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<void> deleteProject(String project) async {
-    final dir = Directory(p.join(_storage.rootPath, project));
+    final dir = Directory(p.join(_storage.rootPath, 'projects', project));
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }

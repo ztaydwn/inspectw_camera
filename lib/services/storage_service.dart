@@ -25,21 +25,21 @@ class StorageService {
   String get rootPath => _appDir.path;
 
   Future<Directory> ensureProject(String project) async {
-    final d = Directory(p.join(_appDir.path, project));
+    final d = Directory(p.join(_appDir.path, 'projects', project));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   Future<Directory> ensureLocation(String project, String location) async {
-    final d = Directory(p.join(_appDir.path, project, location));
+    final d = Directory(p.join(_appDir.path, 'projects', project, location));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   Future<void> renameLocation(
       String project, String oldLocation, String newLocation) async {
-    final oldPath = p.join(_appDir.path, project, oldLocation);
-    final newPath = p.join(_appDir.path, project, newLocation);
+    final oldPath = p.join(_appDir.path, 'projects', project, oldLocation);
+    final newPath = p.join(_appDir.path, 'projects', project, newLocation);
 
     final oldDir = Directory(oldPath);
     if (await oldDir.exists()) {
@@ -48,7 +48,7 @@ class StorageService {
   }
 
   Future<void> deleteLocationDir(String project, String location) async {
-    final path = p.join(_appDir.path, project, location);
+    final path = p.join(_appDir.path, 'projects', project, location);
     final dir = Directory(path);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
@@ -56,26 +56,26 @@ class StorageService {
   }
 
   File metadataFile(String project) =>
-      File('${_appDir.path}/$project/metadata.json');
+      File('${_appDir.path}/projects/$project/metadata.json');
 
   /// JSON con el conteo/sugerencias de descripciones (mapa: "texto" -> usos)
   File descriptionsFile(String project) =>
-      File('${_appDir.path}/$project/descriptions.json');
+      File('${_appDir.path}/projects/$project/descriptions.json');
 
   File locationStatusFile(String project) =>
-      File('${_appDir.path}/$project/location_status.json');
+      File('${_appDir.path}/projects/$project/location_status.json');
 
   File projectDataFile(String project) =>
-      File('${_appDir.path}/$project/project_data.json');
+      File('${_appDir.path}/projects/$project/project_data.json');
 
   Future<Directory> ensureChecklistDir(String project) async {
-    final d = Directory(p.join(_appDir.path, project, 'checklists'));
+    final d = Directory(p.join(_appDir.path, 'projects', project, 'checklists'));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }
 
   File checklistFile(String project, String location) =>
-      File('${_appDir.path}/$project/checklists/$location.json');
+      File('${_appDir.path}/projects/$project/checklists/$location.json');
 
   /// Returns the public DCIM directory on Android.
   /// Creates the directory if it does not exist.
@@ -160,7 +160,7 @@ class StorageService {
 
   Future<int> projectSizeBytes(String project) async {
     await init();
-    final dir = Directory(p.join(_appDir.path, project));
+    final dir = Directory(p.join(_appDir.path, 'projects', project));
     if (!await dir.exists()) return 0;
     int total = 0;
     await for (final f in dir.list(recursive: true)) {
