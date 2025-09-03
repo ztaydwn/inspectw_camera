@@ -16,22 +16,9 @@ class StorageService {
 
   Future<void> init() async {
     if (_ready) return;
-
-    if (Platform.isAndroid || Platform.isIOS) {
-      final externalDir = await getExternalStorageDirectory();
-      if (externalDir == null) {
-        // Fallback to app documents if external storage is not available
-        _appDir = await getApplicationDocumentsDirectory();
-        debugPrint('External storage not available, falling back to app documents.');
-      } else {
-        _appDir = Directory(p.join(externalDir.path, 'InspectW_Projects'));
-      }
-    } else {
-      // For desktop platforms, use application documents directory
-      _appDir = await getApplicationDocumentsDirectory();
-    }
-
-    await _appDir.create(recursive: true); // Create the base directory for projects
+    _appDir =
+        await getApplicationDocumentsDirectory(); // /data/user/0/<pkg>/app_flutter
+    await Directory(p.join(_appDir.path, 'projects')).create(recursive: true);
     _ready = true;
   }
 

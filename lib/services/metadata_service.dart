@@ -79,7 +79,7 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<List<String>> listProjects() async {
-    final root = Directory(_storage.rootPath);
+    final root = Directory('${_storage.rootPath}/projects');
     if (!await root.exists()) return [];
     return root
         .listSync()
@@ -135,7 +135,8 @@ class MetadataService with ChangeNotifier {
         photo.location = newName;
         // This assumes a specific relative path structure, which is brittle.
         // A better approach would be to reconstruct it based on components.
-        photo.relativePath = photo.relativePath.replaceFirst('/$oldName/', '/$newName/');
+        photo.relativePath =
+            photo.relativePath.replaceFirst('/$oldName/', '/$newName/');
       }
     }
 
@@ -346,20 +347,27 @@ class MetadataService with ChangeNotifier {
 
     if (projectData != null) {
       report.writeln('DATOS DEL PROYECTO:');
-      report.writeln('Nombre del establecimiento: ${projectData.establishmentName}');
+      report.writeln(
+          'Nombre del establecimiento: ${projectData.establishmentName}');
       report.writeln('Propietario: ${projectData.owner}');
       report.writeln('Dirección: ${projectData.address}');
-      report.writeln('Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
+      report.writeln(
+          'Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
       report.writeln('Especialidad: ${projectData.specialty}');
-      report.writeln('Profesionales Designados: ${projectData.designatedProfessionals}');
-      report.writeln('Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
-      report.writeln('Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
-      report.writeln('Función del establecimiento: ${projectData.establishmentFunction}');
+      report.writeln(
+          'Profesionales Designados: ${projectData.designatedProfessionals}');
+      report.writeln(
+          'Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
+      report.writeln(
+          'Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
+      report.writeln(
+          'Función del establecimiento: ${projectData.establishmentFunction}');
       report.writeln('Área ocupada: ${projectData.occupiedArea}');
       report.writeln('Cantidad de pisos: ${projectData.floorCount}');
       report.writeln('Riesgo: ${projectData.risk}');
       report.writeln('Situación formal: ${projectData.formalSituation}');
-      report.writeln('Observaciones especiales: ${projectData.specialObservations}');
+      report.writeln(
+          'Observaciones especiales: ${projectData.specialObservations}');
       report.writeln('--- ');
     }
     return report.toString();
@@ -410,23 +418,30 @@ class MetadataService with ChangeNotifier {
 
     if (projectData != null) {
       descriptions.writeln('DATOS DEL PROYECTO:');
-      descriptions.writeln('Nombre del establecimiento: ${projectData.establishmentName}');
+      descriptions.writeln(
+          'Nombre del establecimiento: ${projectData.establishmentName}');
       descriptions.writeln('Propietario: ${projectData.owner}');
       descriptions.writeln('Dirección: ${projectData.address}');
-      descriptions.writeln('Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
+      descriptions.writeln(
+          'Día de la inspección: ${DateFormat('yyyy-MM-dd').format(projectData.inspectionDate)}');
       descriptions.writeln('Especialidad: ${projectData.specialty}');
-      descriptions.writeln('Profesionales Designados: ${projectData.designatedProfessionals}');
-      descriptions.writeln('Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
-      descriptions.writeln('Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
-      descriptions.writeln('Función del establecimiento: ${projectData.establishmentFunction}');
+      descriptions.writeln(
+          'Profesionales Designados: ${projectData.designatedProfessionals}');
+      descriptions.writeln(
+          'Personal de acompañamiento: ${projectData.accompanyingPersonnel}');
+      descriptions.writeln(
+          'Comentarios del proceso de inspección: ${projectData.inspectionProcessComments}');
+      descriptions.writeln(
+          'Función del establecimiento: ${projectData.establishmentFunction}');
       descriptions.writeln('Área ocupada: ${projectData.occupiedArea}');
       descriptions.writeln('Cantidad de pisos: ${projectData.floorCount}');
       descriptions.writeln('Riesgo: ${projectData.risk}');
       descriptions.writeln('Situación formal: ${projectData.formalSituation}');
-      descriptions.writeln('Observaciones especiales: ${projectData.specialObservations}');
+      descriptions.writeln(
+          'Observaciones especiales: ${projectData.specialObservations}');
       descriptions.writeln('--- ');
     }
-    
+
     if (allPhotos.isEmpty) {
       descriptions.writeln('No photo metadata found for this project.');
       return descriptions.toString();
@@ -518,7 +533,8 @@ class MetadataService with ChangeNotifier {
     final f = _storage.locationStatusFile(project);
     final statuses = _locationStatusCache[project]!.values.toList();
 
-    await compute(persistMetadataIsolate, { // can reuse the same isolate
+    await compute(persistMetadataIsolate, {
+      // can reuse the same isolate
       'file': f,
       'content': statuses,
     });
@@ -591,7 +607,8 @@ class MetadataService with ChangeNotifier {
       String checklistItemId, String photoId) async {
     final checklist = await getChecklist(project, location);
     if (checklist != null) {
-      final itemIndex = checklist.items.indexWhere((item) => item.id == checklistItemId);
+      final itemIndex =
+          checklist.items.indexWhere((item) => item.id == checklistItemId);
       if (itemIndex != -1) {
         checklist.items[itemIndex].status = ChecklistItemStatus.completed;
         checklist.items[itemIndex].photoId = photoId;
@@ -609,7 +626,8 @@ class MetadataService with ChangeNotifier {
       if (itemIndex != -1) {
         final item = checklist.items[itemIndex];
         // Cycle: pending -> completed -> omitted -> pending
-        final nextStatusIndex = (item.status.index + 1) % ChecklistItemStatus.values.length;
+        final nextStatusIndex =
+            (item.status.index + 1) % ChecklistItemStatus.values.length;
         item.status = ChecklistItemStatus.values[nextStatusIndex];
         await saveChecklist(project, checklist);
       }
