@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../services/metadata_service.dart';
 import 'dart:io';
+import '../constants.dart';
 
 class PhotoViewerScreen extends StatelessWidget {
   final String imagePath;
@@ -89,18 +90,30 @@ class _EditDescriptionSheet extends StatefulWidget {
 }
 
 class _EditDescriptionSheetState extends State<_EditDescriptionSheet> {
-  late TextEditingController _controller;
+  String? _selectedGroup;
+  String? _selectedDescription;
+  List<String> _descriptionsForGroup = [];
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initial);
-  }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+    // Find the initial group and description
+    for (var group in kDescriptionGroups.entries) {
+      if (group.value.contains(widget.initial)) {
+        _selectedGroup = group.key;
+        _selectedDescription = widget.initial;
+        _descriptionsForGroup = group.value;
+        break;
+      }
+    }
+
+    // If not found (e.g., custom description), set defaults
+    if (_selectedGroup == null) {
+      _selectedGroup = kDescriptionGroups.keys.first;
+      _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
+      _selectedDescription = _descriptionsForGroup.first;
+    }
   }
 
   @override
@@ -111,19 +124,51 @@ class _EditDescriptionSheetState extends State<_EditDescriptionSheet> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text('Editar descripción', style: TextStyle(fontSize: 18)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _controller,
-              maxLines: null,
-              decoration: const InputDecoration(
-                  border: OutlineInputBorder(), hintText: 'Nueva descripción'),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedGroup,
+              decoration: const InputDecoration(labelText: 'Grupo'),
+              items: kDescriptionGroups.keys.map((String group) {
+                return DropdownMenuItem<String>(
+                  value: group,
+                  child: Text(group),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedGroup = newValue!;
+                  _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
+                  // Reset description if it's not in the new group
+                  if (!_descriptionsForGroup.contains(_selectedDescription)) {
+                    _selectedDescription = _descriptionsForGroup.first;
+                  }
+                });
+              },
             ),
             const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedDescription,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+              items: _descriptionsForGroup.map((String description) {
+                return DropdownMenuItem<String>(
+                  value: description,
+                  child: Text(description, overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedDescription = newValue!;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context, _controller.text.trim());
+                Navigator.pop(context, _selectedDescription);
               },
               child: const Text('Guardar'),
             )
