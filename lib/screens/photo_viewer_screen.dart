@@ -72,9 +72,21 @@ class PhotoViewerScreen extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: Image.file(
-          File(imagePath),
-          fit: BoxFit.contain,
+        // OPTIMIZATION: Use a LayoutBuilder to get the constraints of the parent widget.
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Calculate the cacheWidth based on the device's pixel ratio.
+            // This ensures the image is decoded at a resolution appropriate for the screen,
+            // not at its full original resolution, saving memory and CPU.
+            final cacheWidth = (constraints.maxWidth * MediaQuery.of(context).devicePixelRatio).round();
+            
+            return Image.file(
+              File(imagePath),
+              fit: BoxFit.contain,
+              // Pass the calculated cacheWidth to the Image.file constructor.
+              cacheWidth: cacheWidth,
+            );
+          },
         ),
       ),
     );
