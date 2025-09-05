@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -184,6 +185,59 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
 
   encoder.close();
   return zipPath;
+}
+
+/// ISOLATE ENTRY: Creates a zip file and reports progress via SendPort.
+/// Expects a Map with keys:
+///  - 'sendPort': SendPort to post progress/done/error messages
+///  - 'params': CreateZipParams with photos/resolvedPaths/etc.
+void createZipWithProgressIsolate(Map<String, dynamic> args) async {
+  final SendPort sendPort = args['sendPort'] as SendPort;
+  final CreateZipParams params = args['params'] as CreateZipParams;
+
+  try {
+    final total = params.photos.length + 2; // photos + descriptions + infoproyect
+    final zipName =
+        '${params.project}_${DateTime.now().millisecondsSinceEpoch}.zip';
+    final zipPath = p.join(Directory.systemTemp.path, zipName);
+
+    final encoder = ZipFileEncoder();
+    encoder.create(zipPath);
+
+    for (var i = 0; i < params.photos.length; i++) {
+      final photo = params.photos[i];
+      final path = params.resolvedPaths[i];
+      final fileInDcim = File(path);
+      if (fileInDcim.existsSync()) {
+        // Stream file contents instead of loading entire bytes in memory
+        final archivePath = p.join(photo.location, photo.fileName);
+        final size = await fileInDcim.length();
+        final input = InputFileStream(path);
+        encoder.addArchiveFile(ArchiveFile.stream(archivePath, size, input));
+      }
+      sendPort.send({'type': 'progress', 'current': i + 1, 'total': total});
+    }
+
+    // Add descriptions.txt
+    final descBytes = utf8.encode(params.descriptions);
+    encoder.addArchiveFile(
+        ArchiveFile('descriptions.txt', descBytes.length, descBytes));
+    sendPort.send(
+        {'type': 'progress', 'current': params.photos.length + 1, 'total': total});
+
+    // Add infoproyect.txt
+    final projectDataBytes = utf8.encode(params.projectDataReport);
+    encoder.addArchiveFile(
+        ArchiveFile('infoproyect.txt', projectDataBytes.length, projectDataBytes));
+    sendPort.send(
+        {'type': 'progress', 'current': params.photos.length + 2, 'total': total});
+
+    encoder.close();
+    sendPort.send({'type': 'done', 'zipPath': zipPath});
+  } catch (e, s) {
+    debugPrint('[ZIP] isolate error: $e\n$s');
+    sendPort.send({'type': 'error', 'error': e.toString()});
+  }
 }
 
 /// ISOLATE: Persists metadata to a file.

@@ -1,5 +1,7 @@
 // lib/screens/project_screen.dart — v7 (performance refactor)
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:async';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -70,6 +72,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
   bool _isExporting = false;
   bool _isUploading = false;
   bool _isCopyingFiles = false;
+  double _zipProgress = 0.0; // 0..1
+  int _zipCurrent = 0;
+  int _zipTotal = 0;
+  Isolate? _zipIsolate;
+  ReceivePort? _zipReceivePort;
   Future<List<_LocationInfo>>? _locationsFuture;
 
   @override
@@ -314,7 +321,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
   }
 
   Future<String?> _buildZipForProject() async {
-    setState(() => _isExporting = true);
+    setState(() {
+      _isExporting = true;
+      _zipProgress = 0.0;
+      _zipCurrent = 0;
+      _zipTotal = 0;
+    });
     try {
       final allPhotos = await meta.listPhotos(widget.project);
       if (allPhotos.isEmpty) {
@@ -374,8 +386,54 @@ class _ProjectScreenState extends State<ProjectScreen> {
         projectDataReport: projectDataReport,
         resolvedPaths: resolvedPaths,
       );
+      // Initialize progress
+      setState(() {
+        _zipTotal = photosWithPaths.length + 2;
+        _zipCurrent = 0;
+        _zipProgress = 0.0;
+      });
 
-      final zipPath = await compute(createZipIsolate, params);
+      final recv = ReceivePort();
+      final completer = Completer<String?>();
+      _zipReceivePort = recv;
+
+      recv.listen((msg) {
+        if (msg is Map) {
+          final type = msg['type'];
+          if (type == 'progress') {
+            final current = (msg['current'] as int?) ?? 0;
+            final total = (msg['total'] as int?) ?? _zipTotal;
+            if (mounted) {
+              setState(() {
+                _zipCurrent = current;
+                _zipTotal = total;
+                _zipProgress = total > 0 ? current / total : 0.0;
+              });
+            }
+          } else if (type == 'done') {
+            completer.complete(msg['zipPath'] as String?);
+          } else if (type == 'error') {
+            completer.complete(null);
+          }
+        }
+      });
+
+      _zipIsolate = await Isolate.spawn(
+        createZipWithProgressIsolate,
+        {
+          'sendPort': recv.sendPort,
+          'params': params,
+        },
+        errorsAreFatal: true,
+      );
+
+      final zipPath = await completer.future;
+
+      // Cleanup
+      try { _zipReceivePort?.close(); } catch (_) {}
+      _zipReceivePort = null;
+      _zipIsolate?.kill(priority: Isolate.immediate);
+      _zipIsolate = null;
 
       if (zipPath == null) {
         if (mounted) {
@@ -385,8 +443,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      debugPrint(
-          '[ZIP] Created $zipPath with ${photosWithPaths.length} entries.');
+      debugPrint('[ZIP] Created $zipPath with ${photosWithPaths.length} entries.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content:
@@ -764,6 +821,38 @@ class _ProjectScreenState extends State<ProjectScreen> {
           );
         },
       ),
+      bottomNavigationBar: _isExporting
+          ? Material(
+              elevation: 8,
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Generando ZIP...',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          LinearProgressIndicator(
+                            value: _zipTotal > 0 ? _zipProgress : null,
+                            minHeight: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(_zipTotal > 0
+                        ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%  •  $_zipCurrent/$_zipTotal'
+                        : '...'),
+                  ],
+                ),
+              ),
+            )
+          : null,
       floatingActionButton: FloatingActionButton(
         onPressed: _addLocation,
         tooltip: 'Nueva ubicación',
