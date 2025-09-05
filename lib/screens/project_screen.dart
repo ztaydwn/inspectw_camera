@@ -78,6 +78,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
   Isolate? _zipIsolate;
   ReceivePort? _zipReceivePort;
   Future<List<_LocationInfo>>? _locationsFuture;
+  bool _isGridView = true;
 
   @override
   void initState() {
@@ -579,6 +580,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
         title: Text('Proyecto: ${widget.project}', style: const TextStyle(fontSize: 18.0)),
         actions: [
           IconButton(
+            icon: Icon(_isGridView ? Icons.view_list : Icons.view_module),
+            tooltip: 'Cambiar vista',
+            onPressed: () {
+              setState(() {
+                _isGridView = !_isGridView;
+              });
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.playlist_add_check),
             tooltip: 'Checklist de Ubicaciones',
             onPressed: () {
@@ -711,70 +721,140 @@ class _ProjectScreenState extends State<ProjectScreen> {
             );
           }
 
-          // Usamos GridView para un layout más moderno
-          return GridView.builder(
-            padding: const EdgeInsets.all(8.0),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2, // 2 tarjetas por fila
-              crossAxisSpacing: 8.0,
-              mainAxisSpacing: 8.0,
-              childAspectRatio: 1.2, // Ajusta la proporción de las tarjetas
-            ),
-            itemCount: locations.length,
-            itemBuilder: (_, i) {
-              final locInfo = locations[i];
-              final loc = locInfo.name;
-              final isChecklist = locInfo.isChecklist;
-              final isCompleted = locInfo.isCompleted;
+          Widget buildGridView() {
+            return GridView.builder(
+              padding: const EdgeInsets.all(8.0),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, // 2 tarjetas por fila
+                crossAxisSpacing: 8.0,
+                mainAxisSpacing: 8.0,
+                childAspectRatio: 1.2, // Ajusta la proporción de las tarjetas
+              ),
+              itemCount: locations.length,
+              itemBuilder: (_, i) {
+                final locInfo = locations[i];
+                final loc = locInfo.name;
+                final isChecklist = locInfo.isChecklist;
+                final isCompleted = locInfo.isCompleted;
 
-              return Card(
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () async {
-                    if (isChecklist) {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChecklistScreen(
-                            project: widget.project,
-                            location: loc,
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () async {
+                      if (isChecklist) {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChecklistScreen(
+                              project: widget.project,
+                              location: loc,
+                            ),
+                          ),
+                        );
+                      } else {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GalleryScreen(
+                                project: widget.project, location: loc),
+                          ),
+                        );
+                      }
+                      _refreshLocations();
+                    },
+                    onLongPress: () => _showLocationOptions(loc),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ListTile(
+                          leading: Icon(isChecklist
+                              ? Icons.checklist_rtl
+                              : Icons.place_outlined),
+                          title: Text(
+                            loc,
+                            style: theme.textTheme.titleMedium,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: isCompleted
+                              ? const Icon(Icons.check_circle,
+                                  color: Colors.green)
+                              : null,
+                        ),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: FilledButton.tonal(
+                            onPressed: () {
+                              if (isChecklist) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ChecklistScreen(
+                                      project: widget.project,
+                                      location: loc,
+                                    ),
+                                  ),
+                                ).then((_) => _refreshLocations());
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CameraScreen(
+                                        project: widget.project,
+                                        location: loc,
+                                        stayAfterCapture: true),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(isChecklist
+                                    ? Icons.playlist_add_check_circle_outlined
+                                    : Icons.camera_alt_outlined),
+                                const SizedBox(width: 8),
+                                Text(isChecklist
+                                    ? 'Ver Checklist'
+                                    : 'Añadir Foto'),
+                              ],
+                            ),
                           ),
                         ),
-                      );
-                    } else {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GalleryScreen(
-                              project: widget.project, location: loc),
-                        ),
-                      );
-                    }
-                    _refreshLocations();
-                  },
-                  onLongPress: () => _showLocationOptions(loc),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ListTile(
-                        leading: Icon(isChecklist
-                            ? Icons.checklist_rtl
-                            : Icons.place_outlined),
-                        title: Text(
-                          loc,
-                          style: theme.textTheme.titleMedium,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: isCompleted
-                            ? const Icon(Icons.check_circle,
-                                color: Colors.green)
-                            : null,
-                      ),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: FilledButton.tonal(
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+
+          Widget buildListView() {
+            return ListView.builder(
+              padding: const EdgeInsets.all(8.0),
+              itemCount: locations.length,
+              itemBuilder: (_, i) {
+                final locInfo = locations[i];
+                final loc = locInfo.name;
+                final isChecklist = locInfo.isChecklist;
+                final isCompleted = locInfo.isCompleted;
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: ListTile(
+                    leading: Icon(isChecklist ? Icons.checklist_rtl : Icons.place_outlined),
+                    title: Text(loc),
+                    subtitle: Text(isChecklist ? 'Checklist' : 'Galería de fotos'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isCompleted)
+                          const Icon(Icons.check_circle, color: Colors.green),
+                        IconButton(
+                          icon: Icon(isChecklist ? Icons.playlist_add_check_circle_outlined : Icons.camera_alt_outlined),
+                          tooltip: isChecklist ? 'Ver Checklist' : 'Añadir Foto',
                           onPressed: () {
                             if (isChecklist) {
                               Navigator.push(
@@ -798,27 +878,39 @@ class _ProjectScreenState extends State<ProjectScreen> {
                               );
                             }
                           },
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(isChecklist
-                                  ? Icons.playlist_add_check_circle_outlined
-                                  : Icons.camera_alt_outlined),
-                              const SizedBox(width: 8),
-                              Text(isChecklist
-                                  ? 'Ver Checklist'
-                                  : 'Añadir Foto'),
-                            ],
-                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                      ],
+                    ),
+                    onTap: () async {
+                      if (isChecklist) {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChecklistScreen(
+                              project: widget.project,
+                              location: loc,
+                            ),
+                          ),
+                        );
+                      } else {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GalleryScreen(
+                                project: widget.project, location: loc),
+                          ),
+                        );
+                      }
+                      _refreshLocations();
+                    },
+                    onLongPress: () => _showLocationOptions(loc),
                   ),
-                ),
-              );
-            },
-          );
+                );
+              },
+            );
+          }
+
+          return _isGridView ? buildGridView() : buildListView();
         },
       ),
       bottomNavigationBar: _isExporting
