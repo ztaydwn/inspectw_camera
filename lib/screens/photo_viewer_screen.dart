@@ -93,86 +93,130 @@ class _EditDescriptionSheetState extends State<_EditDescriptionSheet> {
   String? _selectedGroup;
   String? _selectedDescription;
   List<String> _descriptionsForGroup = [];
+  late TextEditingController _detailsController;
 
   @override
   void initState() {
     super.initState();
+    _detailsController = TextEditingController();
 
-    // Find the initial group and description
-    for (var group in kDescriptionGroups.entries) {
-      if (group.value.contains(widget.initial)) {
-        _selectedGroup = group.key;
-        _selectedDescription = widget.initial;
-        _descriptionsForGroup = group.value;
-        break;
+    // Find the initial group, preset, and detail
+    _findInitialValues();
+  }
+
+  void _findInitialValues() {
+    for (var groupEntry in kDescriptionGroups.entries) {
+      for (var preset in groupEntry.value) {
+        if (widget.initial.startsWith(preset)) {
+          setState(() {
+            _selectedGroup = groupEntry.key;
+            _descriptionsForGroup = groupEntry.value;
+            _selectedDescription = preset;
+
+            String detail = widget.initial.substring(preset.length).trim();
+            if (detail.startsWith(':') || detail.startsWith('-')) {
+              detail = detail.substring(1).trim();
+            }
+            _detailsController.text = detail;
+          });
+          return; // Found a match, exit
+        }
       }
     }
 
-    // If not found (e.g., custom description), set defaults
-    if (_selectedGroup == null) {
+    // If no preset was matched, assume the whole thing is a custom description.
+    // We set a default group and description, and put the initial value in details.
+    setState(() {
       _selectedGroup = kDescriptionGroups.keys.first;
       _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
       _selectedDescription = _descriptionsForGroup.first;
-    }
+      _detailsController.text = widget.initial;
+    });
+  }
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: MediaQuery.of(context).viewInsets,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Editar descripción', style: TextStyle(fontSize: 18)),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedGroup,
-              decoration: const InputDecoration(labelText: 'Grupo'),
-              items: kDescriptionGroups.keys.map((String group) {
-                return DropdownMenuItem<String>(
-                  value: group,
-                  child: Text(group),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedGroup = newValue!;
-                  _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
-                  // Reset description if it's not in the new group
-                  if (!_descriptionsForGroup.contains(_selectedDescription)) {
-                    _selectedDescription = _descriptionsForGroup.first;
-                  }
-                });
-              },
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedDescription,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Descripción'),
-              items: _descriptionsForGroup.map((String description) {
-                return DropdownMenuItem<String>(
-                  value: description,
-                  child: Text(description, overflow: TextOverflow.ellipsis),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedDescription = newValue!;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, _selectedDescription);
-              },
-              child: const Text('Guardar'),
-            )
-          ],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Editar descripción', style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedGroup,
+                decoration: const InputDecoration(labelText: 'Grupo'),
+                items: kDescriptionGroups.keys.map((String group) {
+                  return DropdownMenuItem<String>(
+                    value: group,
+                    child: Text(group),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedGroup = newValue!;
+                    _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
+                    if (!_descriptionsForGroup.contains(_selectedDescription)) {
+                      _selectedDescription = _descriptionsForGroup.first;
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedDescription,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Descripción'),
+                items: _descriptionsForGroup.map((String description) {
+                  return DropdownMenuItem<String>(
+                    value: description,
+                    child: RichText(
+                      text: TextSpan(
+                        text: description,
+                        style: DefaultTextStyle.of(context).style,
+                      ),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedDescription = newValue!;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _detailsController,
+                decoration: const InputDecoration(
+                  labelText: 'Detalle (opcional)',
+                  hintText: 'Añade información adicional aquí',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  final preset = _selectedDescription ?? '';
+                  final detail = _detailsController.text.trim();
+                  final finalDescription =
+                      detail.isEmpty ? preset : '$preset: $detail';
+                  Navigator.pop(context, finalDescription);
+                },
+                child: const Text('Guardar'),
+              )
+            ],
+          ),
         ),
       ),
     );
