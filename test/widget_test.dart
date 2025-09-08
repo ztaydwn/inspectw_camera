@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inspectw_camera/main.dart';
-import 'package:inspectw_camera/services/metadata_service.dart';
+import 'package:inspectw/main.dart';
+import 'package:inspectw/services/metadata_service.dart';
 
 void main() {
-  testWidgets('HomeScreen shows no projects message initially', (WidgetTester tester) async {
+  testWidgets('HomeScreen shows no projects message initially',
+      (WidgetTester tester) async {
     // Initialize the metadata service
     final metadataService = MetadataService();
     await metadataService.init();
