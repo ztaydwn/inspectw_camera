@@ -33,3 +33,22 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+flutter_native_splash:
+  # El color de fondo de tu pantalla de bienvenida.
+  color: "#000000" # Usa "#000000" para negro
+
+  # La imagen que quieres mostrar.
+  image: assets/LOGOAPPW2.png
+
+  # Opcional: si quieres un logo diferente para el modo oscuro.
+  # color_dark: "#000000"
+  # image_dark: assets/logo_dark.png
+
+  # Configuración específica para Android e iOS.
+  android_12:
+    # Para Android 12+, la imagen no debe ser muy grande.
+    image: assets/LOGOAPPW2.png
+    icon_background_color: "#000000"
+
+  web: false # Desactívalo si no compilas para web.
