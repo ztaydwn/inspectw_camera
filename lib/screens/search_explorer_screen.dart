@@ -49,7 +49,7 @@ class _SearchExplorerScreenState extends State<SearchExplorerScreen> {
 
     _resolvedFiles.clear();
     for (final pEntry in filteredPhotos) {
-      final file = await _storage.dcimFileFromRelativePath(pEntry.relativePath);
+      final file = await _storage.resolvePhotoFile(pEntry);
       if (file != null && await file.exists()) {
         _resolvedFiles[pEntry.id] = file;
       }

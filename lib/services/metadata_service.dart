@@ -78,6 +78,39 @@ class MetadataService with ChangeNotifier {
     }
   }
 
+  // --- New method to handle imported photos ---
+  Future<PhotoEntry> saveImportedPhoto({
+    required XFile xfile,
+    required String project,
+    required String location,
+    required String description,
+  }) async {
+    await init();
+
+    final locationDir = await _storage.ensureLocation(project, location);
+    final newFileName = '${_uuid.v4()}.jpg';
+    final destinationPath = p.join(locationDir.path, newFileName);
+
+    // Copy the file from its temp location to our app's permanent storage
+    await xfile.saveTo(destinationPath);
+
+    // Create a relative path with our 'internal' prefix
+    final relativePath = p.join('projects', project, location, newFileName);
+    final internalPath = 'internal/$relativePath';
+
+    // Use the existing addPhoto method to create and save the metadata
+    final newEntry = await addPhoto(
+      project: project,
+      location: location,
+      fileName: newFileName,
+      relativePath: internalPath, // The crucial part
+      description: description,
+      takenAt: DateTime.now(),
+    );
+
+    return newEntry;
+  }
+
   Future<List<String>> listProjects() async {
     final root = Directory('${_storage.rootPath}/projects');
     if (!await root.exists()) return [];
@@ -290,8 +323,8 @@ class MetadataService with ChangeNotifier {
     final idx = list.indexWhere((e) => e.id == photoId);
     if (idx < 0) return;
     final entry = list[idx];
-    // The photo is in DCIM, not in the app's private storage
-    final file = await _storage.dcimFileFromRelativePath(entry.relativePath);
+    // The photo could be in DCIM or in the app's private storage
+    final file = await _storage.resolvePhotoFile(entry);
     try {
       if (file != null && await file.exists()) {
         await file.delete();
@@ -385,7 +418,7 @@ class MetadataService with ChangeNotifier {
 
     final photosWithPaths = <PhotoEntry>[];
     for (final photo in allPhotos) {
-      final f = await _storage.dcimFileFromRelativePath(photo.relativePath);
+      final f = await _storage.resolvePhotoFile(photo);
       if (f != null && await f.exists()) {
         photosWithPaths.add(photo);
       }
@@ -449,7 +482,7 @@ class MetadataService with ChangeNotifier {
 
     final photosWithPaths = <PhotoEntry>[];
     for (final photo in allPhotos) {
-      final f = await _storage.dcimFileFromRelativePath(photo.relativePath);
+      final f = await _storage.resolvePhotoFile(photo);
       if (f != null && await f.exists()) {
         photosWithPaths.add(photo);
       }

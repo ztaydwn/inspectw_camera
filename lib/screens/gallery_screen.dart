@@ -96,7 +96,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     _resolvedFiles.clear();
     for (final pEntry in photoEntries) {
-      final file = await storage.dcimFileFromRelativePath(pEntry.relativePath);
+      final file = await storage.resolvePhotoFile(pEntry);
 
       if (file != null && await file.exists()) {
         _resolvedFiles[pEntry.id] = file;

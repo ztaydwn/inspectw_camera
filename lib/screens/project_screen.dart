@@ -2,10 +2,12 @@
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:async';
+// import 'package:camera/camera.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -24,6 +26,7 @@ import 'search_explorer_screen.dart';
 import 'project_data_screen.dart';
 import '../checklist_templates.dart';
 import 'checklist_screen.dart';
+import 'import_review_screen.dart';
 
 /// Isolate function to find all existing photo files for a project.
 Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
@@ -38,7 +41,7 @@ Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
   await storage.init();
   final paths = <String>[];
   for (final photo in photos) {
-    final f = await storage.dcimFileFromRelativePath(photo.relativePath);
+    final f = await storage.resolvePhotoFile(photo);
     if (f != null && await f.exists()) {
       paths.add(f.path);
     }
@@ -105,8 +108,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
     final statuses = await meta.getLocationStatuses(widget.project);
     final List<_LocationInfo> locationInfoList = [];
     for (final status in statuses) {
-      final isChecklist =
-          await storage.checklistFile(widget.project, status.locationName).exists();
+      final isChecklist = await storage
+          .checklistFile(widget.project, status.locationName)
+          .exists();
       locationInfoList.add(_LocationInfo(
         name: status.locationName,
         isChecklist: isChecklist,
@@ -174,8 +178,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
     final c = TextEditingController();
     final name = await showDialog<String?>(
-      context:
-          context, //decia ctx, ver si se tiene que cambiar abajo a context tambien
+      context: context,
       builder: (context) => AlertDialog(
         title: Text(template == null
             ? 'Nueva Ubicación'
@@ -341,7 +344,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final photosWithPaths = <PhotoEntry>[];
       final resolvedPaths = <String>[];
       for (final photo in allPhotos) {
-        final f = await storage.dcimFileFromRelativePath(photo.relativePath);
+        final f = await storage.resolvePhotoFile(photo);
         if (f != null && await f.exists()) {
           photosWithPaths.add(photo);
           resolvedPaths.add(f.path);
@@ -431,7 +434,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final zipPath = await completer.future;
 
       // Cleanup
-      try { _zipReceivePort?.close(); } catch (_) {}
+      try {
+        _zipReceivePort?.close();
+      } catch (_) {}
       _zipReceivePort = null;
       _zipIsolate?.kill(priority: Isolate.immediate);
       _zipIsolate = null;
@@ -444,7 +449,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
         return null;
       }
 
-      debugPrint('[ZIP] Created $zipPath with ${photosWithPaths.length} entries.');
+      debugPrint(
+          '[ZIP] Created $zipPath with ${photosWithPaths.length} entries.');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content:
@@ -571,13 +577,64 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
+  Future<void> _importPhotos() async {
+    // 1. Get list of locations
+    final locations = await meta.listLocations(widget.project);
+    if (!mounted) return;
+    if (locations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'No hay ubicaciones en este proyecto. Por favor, crea una primero.')),
+      );
+      return;
+    }
+
+    // 2. Ask user to select a location
+    final selectedLocation = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Seleccionar Ubicación para Importar'),
+        children: locations
+            .map((loc) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, loc),
+                  child: Text(loc),
+                ))
+            .toList(),
+      ),
+    );
+
+    if (selectedLocation == null) return; // User cancelled
+
+    // 3. Pick images
+    final imagePicker = ImagePicker();
+    final List<XFile> pickedFiles = await imagePicker.pickMultiImage();
+
+    if (pickedFiles.isEmpty) return;
+    if (!mounted) return;
+
+    // 4. Navigate to the review screen
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImportReviewScreen(
+          files: pickedFiles,
+          project: widget.project,
+          location: selectedLocation,
+        ),
+      ),
+    );
+    _refreshLocations(); // Refresh in case new photos affect completion status
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Proyecto: ${widget.project}', style: const TextStyle(fontSize: 18.0)),
+        title: Text('Proyecto: ${widget.project}',
+            style: const TextStyle(fontSize: 18.0)),
         actions: [
           IconButton(
             icon: Icon(_isGridView ? Icons.view_list : Icons.view_module),
@@ -618,6 +675,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
+                case 'import':
+                  _importPhotos();
+                  break;
                 case 'export':
                   _exportProject();
                   break;
@@ -639,6 +699,13 @@ class _ProjectScreenState extends State<ProjectScreen> {
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.photo_library_outlined),
+                  title: Text('Importar Fotos'),
+                ),
+              ),
               const PopupMenuItem<String>(
                 value: 'export',
                 child: ListTile(
@@ -844,17 +911,23 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4.0),
                   child: ListTile(
-                    leading: Icon(isChecklist ? Icons.checklist_rtl : Icons.place_outlined),
+                    leading: Icon(isChecklist
+                        ? Icons.checklist_rtl
+                        : Icons.place_outlined),
                     title: Text(loc),
-                    subtitle: Text(isChecklist ? 'Checklist' : 'Galería de fotos'),
+                    subtitle:
+                        Text(isChecklist ? 'Checklist' : 'Galería de fotos'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isCompleted)
                           const Icon(Icons.check_circle, color: Colors.green),
                         IconButton(
-                          icon: Icon(isChecklist ? Icons.playlist_add_check_circle_outlined : Icons.camera_alt_outlined),
-                          tooltip: isChecklist ? 'Ver Checklist' : 'Añadir Foto',
+                          icon: Icon(isChecklist
+                              ? Icons.playlist_add_check_circle_outlined
+                              : Icons.camera_alt_outlined),
+                          tooltip:
+                              isChecklist ? 'Ver Checklist' : 'Añadir Foto',
                           onPressed: () {
                             if (isChecklist) {
                               Navigator.push(
@@ -918,7 +991,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
               elevation: 8,
               color: Colors.white,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
                     Expanded(

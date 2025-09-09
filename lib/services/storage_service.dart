@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter/foundation.dart'; // Add this import for debugPrint
 import '../constants.dart'; // Para kAppFolder
+import '../models.dart'; // Import for PhotoEntry
 
 class StorageService {
   static final StorageService _i = StorageService._();
@@ -155,6 +156,26 @@ class StorageService {
     } catch (e) {
       debugPrint('Error resolving file from URI: $e');
       return null;
+    }
+  }
+
+  /// Resolves a PhotoEntry to a File object, handling both DCIM and internal photos.
+  Future<File?> resolvePhotoFile(PhotoEntry entry) async {
+    await init(); // Ensure _appDir is initialized
+
+    if (entry.relativePath.startsWith('internal/')) {
+      // It's an imported photo stored in the app's private directory.
+      final internalPath = entry.relativePath.replaceFirst('internal/', '');
+      final fullPath = p.join(rootPath, internalPath);
+      final file = File(fullPath);
+      if (await file.exists()) {
+        return file;
+      }
+      debugPrint('Internal photo not found at: $fullPath');
+      return null;
+    } else {
+      // It's a photo from the camera, use the existing DCIM logic.
+      return dcimFileFromRelativePath(entry.relativePath);
     }
   }
 
