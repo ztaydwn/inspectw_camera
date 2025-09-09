@@ -4,7 +4,7 @@ import 'package:camera/camera.dart'; // For XFile
 import 'package:provider/provider.dart';
 
 import '../services/metadata_service.dart';
-import '../widgets/description_input.dart';
+import '../widgets/edit_description_sheet.dart'; // Updated import
 
 class ImportReviewScreen extends StatefulWidget {
   final List<XFile> files;
@@ -25,38 +25,21 @@ class ImportReviewScreen extends StatefulWidget {
 class _ImportReviewScreenState extends State<ImportReviewScreen> {
   int _currentIndex = 0;
   bool _isSaving = false;
-  String? _currentDescription;
+  String _currentDescription = ''; // Start with an empty description
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill description if it's a common format like 'IMG_YYYYMMDD_HHMMSS'
-    _currentDescription =
-        _extractDescriptionFromName(widget.files[_currentIndex].name);
-  }
-
-  String _extractDescriptionFromName(String fileName) {
-    // Basic example: remove extension and replace underscores
-    try {
-      return fileName.split('.').first.replaceAll('_', ' ');
-    } catch (e) {
-      return '';
-    }
+    // No need to pre-fill, the new sheet handles it better.
   }
 
   Future<void> _addOrEditDescription() async {
-    final metadataService = context.read<MetadataService>();
-    // Fetch suggestions for the autocomplete
-    final suggestions = await metadataService.suggestions(widget.project, '');
-    if (!mounted) return;
     final description = await showModalBottomSheet<String>(
       context: context,
-      builder: (context) => DescriptionInput(
-        project: widget.project,
-        initial: _currentDescription,
-        presets: suggestions,
-      ),
       isScrollControlled: true,
+      builder: (context) => EditDescriptionSheet(
+        initial: _currentDescription,
+      ),
     );
 
     if (description != null) {
@@ -67,7 +50,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
   }
 
   Future<void> _saveAndNext() async {
-    if (_currentDescription == null || _currentDescription!.trim().isEmpty) {
+    if (_currentDescription.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor, añade una descripción.')),
       );
@@ -79,12 +62,12 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     });
 
     final metadataService = context.read<MetadataService>();
-    // This function will be created in the next step
+    
     await metadataService.saveImportedPhoto(
       xfile: widget.files[_currentIndex],
       project: widget.project,
       location: widget.location,
-      description: _currentDescription!,
+      description: _currentDescription,
     );
 
     if (!mounted) return;
@@ -92,8 +75,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     if (_currentIndex < widget.files.length - 1) {
       setState(() {
         _currentIndex++;
-        _currentDescription =
-            _extractDescriptionFromName(widget.files[_currentIndex].name);
+        _currentDescription = ''; // Reset for the next photo
         _isSaving = false;
       });
     } else {
@@ -144,8 +126,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                   Card(
                     elevation: 2,
                     child: ListTile(
-                      title: Text(_currentDescription ??
-                          'Toca para añadir descripción'),
+                      title: Text(_currentDescription.isEmpty
+                          ? 'Toca para añadir descripción'
+                          : _currentDescription),
                       subtitle: const Text('Descripción'),
                       trailing: const Icon(Icons.edit, color: Colors.blue),
                       onTap: _addOrEditDescription,

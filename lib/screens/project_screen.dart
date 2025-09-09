@@ -593,15 +593,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     // 2. Ask user to select a location
     final selectedLocation = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Seleccionar Ubicación para Importar'),
-        children: locations
-            .map((loc) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, loc),
-                  child: Text(loc),
-                ))
-            .toList(),
-      ),
+      builder: (context) => _LocationSelectionDialog(locations: locations),
     );
 
     if (selectedLocation == null) return; // User cancelled
@@ -1024,6 +1016,65 @@ class _ProjectScreenState extends State<ProjectScreen> {
         tooltip: 'Nueva ubicación',
         child: const Icon(Icons.add_location_alt_outlined),
       ),
+    );
+  }
+}
+
+// A dedicated stateful widget for the location selection dialog.
+class _LocationSelectionDialog extends StatefulWidget {
+  final List<String> locations;
+  const _LocationSelectionDialog({required this.locations});
+
+  @override
+  State<_LocationSelectionDialog> createState() =>
+      _LocationSelectionDialogState();
+}
+
+class _LocationSelectionDialogState extends State<_LocationSelectionDialog> {
+  String? _selectedLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Seleccionar Ubicación'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.builder(
+          itemCount: widget.locations.length,
+          shrinkWrap: true,
+          itemBuilder: (context, index) {
+            final loc = widget.locations[index];
+            return RadioListTile<String>(
+              title: Text(loc),
+              value: loc,
+              // ignore: deprecated_member_use
+              groupValue: _selectedLocation,
+              // ignore: deprecated_member_use
+              onChanged: (String? value) {
+                setState(() {
+                  _selectedLocation = value;
+                });
+              },
+            );
+          },
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          child: const Text('Cancelar'),
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+        ),
+        FilledButton(
+          onPressed: _selectedLocation == null
+              ? null // Disable button if nothing is selected
+              : () {
+                  Navigator.of(context).pop(_selectedLocation);
+                },
+          child: const Text('Aceptar'),
+        ),
+      ],
     );
   }
 }
