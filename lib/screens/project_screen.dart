@@ -78,7 +78,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
   double _zipProgress = 0.0; // 0..1
   int _zipCurrent = 0;
   int _zipTotal = 0;
-  Isolate? _zipIsolate;
   ReceivePort? _zipReceivePort;
   Future<List<_LocationInfo>>? _locationsFuture;
   bool _isGridView = true;
@@ -416,13 +415,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
             }
           } else if (type == 'done') {
             completer.complete(msg['zipPath'] as String?);
+            _zipReceivePort?.close();
+            _zipReceivePort = null;
           } else if (type == 'error') {
             completer.complete(null);
+            _zipReceivePort?.close();
+            _zipReceivePort = null;
           }
         }
       });
 
-      _zipIsolate = await Isolate.spawn(
+      await Isolate.spawn(
         createZipWithProgressIsolate,
         {
           'sendPort': recv.sendPort,
@@ -434,12 +437,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final zipPath = await completer.future;
 
       // Cleanup
-      try {
-        _zipReceivePort?.close();
-      } catch (_) {}
-      _zipReceivePort = null;
-      _zipIsolate?.kill(priority: Isolate.immediate);
-      _zipIsolate = null;
+      // Isolate will terminate itself after completion.
 
       if (zipPath == null) {
         if (mounted) {
@@ -992,8 +990,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('Generando ZIP...',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                              _zipCurrent < _zipTotal
+                                  ? 'Comprimiendo archivo $_zipCurrent de $_zipTotal...'
+                                  : 'Finalizando...',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 8),
                           LinearProgressIndicator(
                             value: _zipTotal > 0 ? _zipProgress : null,
@@ -1004,7 +1006,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     ),
                     const SizedBox(width: 12),
                     Text(_zipTotal > 0
-                        ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%  •  $_zipCurrent/$_zipTotal'
+                        ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%'
                         : '...'),
                   ],
                 ),
