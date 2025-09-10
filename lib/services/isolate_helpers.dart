@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../constants.dart';
 import '../models.dart';
+import '../utils/path_utils.dart';
 
 // Helper class to pass arguments to the photo saving isolate
 class SavePhotoParams {
@@ -160,9 +161,9 @@ class CreateZipParams {
 
 /// ISOLATE: Creates a zip file from photos.
 Future<String?> createZipIsolate(CreateZipParams params) async {
-  final locationPart = params.location != null ? '_${params.location}' : '';
-  final zipName =
-      '${params.project}${locationPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
+  final proj = sanitizeFileName(params.project);
+  final locPart = params.location != null ? '_${sanitizeFileName(params.location!)}' : '';
+  final zipName = '$proj${locPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
   final zipPath = p.join(Directory.systemTemp.path, zipName);
   final encoder = ZipFileEncoder();
   encoder.create(zipPath);
@@ -173,7 +174,8 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
     final fileInDcim = File(path);
     if (fileInDcim.existsSync()) {
       final bytes = await fileInDcim.readAsBytes();
-      final archivePath = p.join(photo.location, photo.fileName);
+      // Use POSIX separators inside the ZIP for portability
+      final archivePath = p.posix.join(photo.location, photo.fileName);
       encoder.addArchiveFile(ArchiveFile(archivePath, bytes.length, bytes));
     }
   }
@@ -199,11 +201,10 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
   final CreateZipParams params = args['params'] as CreateZipParams;
 
   try {
-    final total =
-        params.photos.length + 2; // photos + descriptions + infoproyect
-    final locationPart = params.location != null ? '_${params.location}' : '';
-    final zipName =
-        '${params.project}${locationPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
+    final total = params.photos.length + 2; // photos + descriptions + infoproyect
+    final proj = sanitizeFileName(params.project);
+    final locPart = params.location != null ? '_${sanitizeFileName(params.location!)}' : '';
+    final zipName = '$proj${locPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
     final zipPath = p.join(Directory.systemTemp.path, zipName);
 
     final encoder = ZipFileEncoder();
@@ -215,7 +216,7 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
       final fileInDcim = File(path);
       if (fileInDcim.existsSync()) {
         // Stream file contents instead of loading entire bytes in memory
-        final archivePath = p.join(photo.location, photo.fileName);
+        final archivePath = p.posix.join(photo.location, photo.fileName);
         final size = await fileInDcim.length();
         final input = InputFileStream(path);
         encoder.addArchiveFile(ArchiveFile.stream(archivePath, size, input));

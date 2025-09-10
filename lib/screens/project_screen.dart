@@ -27,6 +27,7 @@ import 'project_data_screen.dart';
 import '../checklist_templates.dart';
 import 'checklist_screen.dart';
 import 'import_review_screen.dart';
+import '../utils/path_utils.dart';
 
 /// Isolate function to find all existing photo files for a project.
 Future<List<String>> _resolveFilePathsIsolate(Map<String, dynamic> args) async {
@@ -478,7 +479,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
         tempFilePath: zipPath,
         dirType: DirType.download,
         dirName: DirName.download,
-        relativePath: p.join(kAppFolder, widget.project),
+        relativePath:
+            p.posix.join(kAppFolder, sanitizeDir(widget.project)),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -554,8 +556,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
             tempFilePath: zipPath,
             dirType: DirType.download,
             dirName: DirName.download,
-            relativePath: p.join(kAppFolder, widget.project,
-                locationName), // Subfolder for location
+            // Subfolder for location; sanitize names and use POSIX separators
+            relativePath: p.posix.join(
+                kAppFolder, sanitizeDir(widget.project), sanitizeDir(locationName)),
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(

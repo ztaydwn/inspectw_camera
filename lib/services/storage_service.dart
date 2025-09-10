@@ -6,6 +6,7 @@ import 'package:media_store_plus/media_store_plus.dart';
 import 'package:flutter/foundation.dart'; // Add this import for debugPrint
 import '../constants.dart'; // Para kAppFolder
 import '../models.dart'; // Import for PhotoEntry
+import '../utils/path_utils.dart';
 
 class StorageService {
   static final StorageService _i = StorageService._();
@@ -226,7 +227,7 @@ class StorageService {
     MediaStore.appFolder = kAppFolder;
 
     final tempDir = await getTemporaryDirectory();
-    final fileName = customFileName ?? '${project}_report.txt';
+    final fileName = sanitizeFileName(customFileName ?? '${project}_report.txt');
     final tempReportFile = File(p.join(tempDir.path, fileName));
     await tempReportFile.writeAsString(reportContent);
 
@@ -234,7 +235,7 @@ class StorageService {
       tempFilePath: tempReportFile.path,
       dirType: DirType.download,
       dirName: DirName.download,
-      relativePath: p.join(kAppFolder, project),
+      relativePath: p.posix.join(kAppFolder, sanitizeDir(project)),
     );
 
     // MediaStore MUEVE el archivo, así que no necesitamos borrar el temporal.
