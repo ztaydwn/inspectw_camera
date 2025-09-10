@@ -534,7 +534,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
         });
 
         // Call a new helper method to build and save the ZIP for this location
-        final zipPath = await _buildZipForLocation(widget.project, locationName);
+        final zipPath =
+            await _buildZipForLocation(widget.project, locationName);
 
         if (zipPath == null) {
           if (mounted) {
@@ -553,7 +554,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
             tempFilePath: zipPath,
             dirType: DirType.download,
             dirName: DirName.download,
-            relativePath: p.join(kAppFolder, widget.project, locationName), // Subfolder for location
+            relativePath: p.join(kAppFolder, widget.project,
+                locationName), // Subfolder for location
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -572,7 +574,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
             if (await tmpZip.exists()) {
               await tmpZip.delete();
             } else {
-              debugPrint('[ZIP] Temp location ZIP not found (already moved/cleaned): $zipPath');
+              debugPrint(
+                  '[ZIP] Temp location ZIP not found (already moved/cleaned): $zipPath');
             }
           } catch (e) {
             debugPrint('[ZIP] Failed to delete temp location ZIP file: $e');
@@ -584,7 +587,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Exportación de ZIPs por ubicación completada.')));
       }
-
     } catch (e, s) {
       debugPrint('[ZIP] Error exporting by location: $e\n$s');
       if (mounted) {
@@ -596,7 +598,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
-  Future<String?> _buildZipForLocation(String project, String locationName) async {
+  Future<String?> _buildZipForLocation(
+      String project, String locationName) async {
     // This is a simplified version of _buildZipForProject, scoped to a location.
     // Note: It still uses the project-wide reports.
     // A future improvement could be location-specific reports.
@@ -618,7 +621,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
       }
 
       if (photosWithPaths.isEmpty) {
-        debugPrint('[ZIP] No photo files could be resolved for location: $locationName');
+        debugPrint(
+            '[ZIP] No photo files could be resolved for location: $locationName');
         return null;
       }
 
@@ -638,12 +642,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
       final recv = ReceivePort();
       final completer = Completer<String?>();
-      
+
       // We don't have a dedicated zip receive port for the location, so we can't use the main one.
       // This means we won't get granular progress for each location's zip creation,
       // but the main loop in _exportProjectByLocation gives overall progress.
       // A more advanced implementation could manage multiple receive ports.
-      
+
       recv.listen((msg) {
         if (msg is Map) {
           final type = msg['type'];
@@ -676,7 +680,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
       }
 
       return zipPath;
-
     } catch (e, s) {
       debugPrint('[ZIP] Error building location ZIP for $locationName: $e\n$s');
       return null;
@@ -843,7 +846,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
           ),
           // Agrupamos acciones en un PopupMenuButton para limpiar la AppBar
           PopupMenuButton<String>(
-            onSelected: (value) {
+            onSelected: (value) async {
               switch (value) {
                 case 'import':
                   _importPhotos();
@@ -868,6 +871,76 @@ class _ProjectScreenState extends State<ProjectScreen> {
                           ProjectDataScreen(project: widget.project),
                     ),
                   );
+                  break;
+                case 'export_metadata':
+                  try {
+                    final fileName =
+                        await meta.exportMetadataFile(widget.project);
+                    if (!context.mounted) return;
+                    {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Exportado: $fileName')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
+                    }
+                  }
+                  break;
+                case 'export_descriptions':
+                  try {
+                    final fileName =
+                        await meta.exportDescriptionsFile(widget.project);
+                    if (!context.mounted) return;
+                    {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Exportado: $fileName')),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
+                    }
+                  }
+                  break;
+                case 'force_export_descriptions':
+                  if (_isCopyingFiles) return;
+                  setState(() => _isCopyingFiles = true);
+                  try {
+                    final report =
+                        await meta.generateTolerantPhotoDescriptionsReport(
+                            widget.project);
+                    final savedFile = await storage.exportReportToDownloads(
+                      project: widget.project,
+                      reportContent: report,
+                      customFileName:
+                          '${widget.project}_descriptions_report_completo.txt',
+                    );
+                    if (!context.mounted) return;
+                    {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                            content:
+                                Text('Reporte forzado copiado: $savedFile')),
+                      );
+                    }
+                  } catch (e) {
+                    debugPrint('Error al forzar reporte: $e');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error al forzar reporte: $e')),
+                      );
+                    }
+                  } finally {
+                    if (mounted) {
+                      setState(() => _isCopyingFiles = false);
+                    }
+                  }
                   break;
               }
             },
@@ -912,6 +985,32 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 child: ListTile(
                   leading: Icon(Icons.info_outline),
                   title: Text('Datos del Proyecto'),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'force_export_descriptions',
+                child: ListTile(
+                  leading: Icon(Icons.description, color: Colors.green),
+                  title: Text('Forzar reporte de descripciones',
+                      style: TextStyle(color: Colors.green)),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'export_metadata',
+                child: ListTile(
+                  leading: Icon(Icons.data_object, color: Colors.orange),
+                  title: Text('Recuperar metadata.json',
+                      style: TextStyle(color: Colors.orange)),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'export_descriptions',
+                child: ListTile(
+                  leading: Icon(Icons.data_object, color: Colors.orange),
+                  title: Text('Recuperar descriptions.json',
+                      style: TextStyle(color: Colors.orange)),
                 ),
               ),
             ],

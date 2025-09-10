@@ -94,8 +94,8 @@ class MetadataService with ChangeNotifier {
     // Copy the file from its temp location to our app's permanent storage
     await xfile.saveTo(destinationPath);
 
-    // Create a relative path with our 'internal' prefix
-    final relativePath = p.join('projects', project, location, newFileName);
+    // Create a relative path with our 'internal' prefix using URL-style separators
+    final relativePath = p.url.join('projects', project, location, newFileName);
     final internalPath = 'internal/$relativePath';
 
     // Use the existing addPhoto method to create and save the metadata
@@ -166,10 +166,29 @@ class MetadataService with ChangeNotifier {
     for (var photo in photos) {
       if (photo.location == oldName) {
         photo.location = newName;
-        // This assumes a specific relative path structure, which is brittle.
-        // A better approach would be to reconstruct it based on components.
-        photo.relativePath =
-            photo.relativePath.replaceFirst('/$oldName/', '/$newName/');
+
+        if (photo.relativePath.startsWith('internal/')) {
+          // Path is like: internal/projects/<project>/<location>/<filename>
+          // We need to replace the <location> part.
+          // Using split/join is more robust than string replacement.
+          final pathSegments = photo.relativePath.split('/');
+          // Expected structure: [internal, projects, projectName, locationName, fileName]
+          // We look for the location name as the second to last segment.
+          if (pathSegments.length > 1 &&
+              pathSegments[pathSegments.length - 2] == oldName) {
+            pathSegments[pathSegments.length - 2] = newName;
+            photo.relativePath = pathSegments.join('/');
+          } else {
+            // If the path structure is not what we expect, we log it.
+            // The original replacement logic was buggy and is now removed.
+            // Not changing the path is safer than corrupting it.
+            debugPrint(
+                '[MetadataService] Could not update path for ${photo.relativePath}: unexpected structure during rename.');
+          }
+        }
+        // For non-internal (DCIM) photos, the relativePath does not contain the
+        // location name, so we don't need to change it. The photo is linked
+        // to the location via the `photo.location` field, which is already updated.
       }
     }
 
@@ -665,5 +684,73 @@ class MetadataService with ChangeNotifier {
         await saveChecklist(project, checklist);
       }
     }
+  }
+
+  // --- Raw Data Export Methods ---
+
+  /// Exports the raw metadata.json file to the Downloads folder.
+  Future<String> exportMetadataFile(String project) async {
+    final metaFile = _storage.metadataFile(project);
+    if (!await metaFile.exists()) {
+      throw Exception('metadata.json not found for project $project');
+    }
+    final content = await metaFile.readAsString();
+
+    return await _storage.exportReportToDownloads(
+      project: project,
+      reportContent: content,
+      customFileName: '${project}_metadata_backup.json',
+    );
+  }
+
+  /// Exports the raw descriptions.json file to the Downloads folder.
+  Future<String> exportDescriptionsFile(String project) async {
+    final descFile = _storage.descriptionsFile(project);
+    if (!await descFile.exists()) {
+      throw Exception('descriptions.json not found for project $project');
+    }
+    final content = await descFile.readAsString();
+
+    return await _storage.exportReportToDownloads(
+      project: project,
+      reportContent: content,
+      customFileName: '${project}_descriptions_backup.json',
+    );
+  }
+
+  /// Generates a human-readable text report for ALL photo entries, even if the underlying file is missing.
+  Future<String> generateTolerantPhotoDescriptionsReport(String project) async {
+    final allPhotos = await listPhotos(project);
+    final descriptions = StringBuffer();
+
+    if (allPhotos.isEmpty) {
+      descriptions.writeln('No photo metadata found for this project.');
+      return descriptions.toString();
+    }
+
+    descriptions.writeln('--- INICIO DEL REPORTE COMPLETO DE DESCRIPCIONES ---');
+    descriptions.writeln('Proyecto: $project');
+    descriptions.writeln(
+        'Exportado el: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
+    descriptions.writeln('Este reporte incluye TODAS las entradas de metadatos, incluyendo aquellas cuyo archivo de foto no se pudo encontrar.');
+    descriptions.writeln('---');
+
+    // This version does NOT check for file existence. It reports on all metadata entries.
+    for (final photo in allPhotos) {
+      descriptions.writeln('[${photo.location}] ${photo.fileName}');
+      descriptions.writeln('  Description: ${photo.description}');
+      descriptions.writeln(
+          '  Taken at: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(photo.takenAt)}');
+
+      // Add a warning if the file is missing
+      final f = await _storage.resolvePhotoFile(photo);
+      if (f == null || !await f.exists()) {
+        descriptions.writeln('  [AVISO: Archivo de foto no encontrado en la ruta: ${photo.relativePath}]');
+      }
+      descriptions.writeln(); // Add a blank line for readability
+    }
+
+    descriptions.writeln('--- FIN DEL REPORTE ---');
+    return descriptions.toString();
   }
 }

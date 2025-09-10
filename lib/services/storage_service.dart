@@ -206,6 +206,7 @@ class StorageService {
   Future<String> exportReportToDownloads({
     required String project,
     required String reportContent,
+    String? customFileName,
   }) async {
     await init();
 
@@ -218,7 +219,7 @@ class StorageService {
     MediaStore.appFolder = kAppFolder;
 
     final tempDir = await getTemporaryDirectory();
-    final fileName = '${project}_report.txt';
+    final fileName = customFileName ?? '${project}_report.txt';
     final tempReportFile = File(p.join(tempDir.path, fileName));
     await tempReportFile.writeAsString(reportContent);
 
