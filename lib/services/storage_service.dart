@@ -56,6 +56,12 @@ class StorageService {
     }
   }
 
+  /// Verifica si una ubicación existe dentro del proyecto
+  Future<bool> locationExists(String project, String locationName) async {
+    final dir = Directory(p.join(rootPath, 'projects', project, locationName));
+    return dir.exists();
+  }
+
   File metadataFile(String project) =>
       File('${_appDir.path}/projects/$project/metadata.json');
 
@@ -70,7 +76,8 @@ class StorageService {
       File('${_appDir.path}/projects/$project/project_data.json');
 
   Future<Directory> ensureChecklistDir(String project) async {
-    final d = Directory(p.join(_appDir.path, 'projects', project, 'checklists'));
+    final d =
+        Directory(p.join(_appDir.path, 'projects', project, 'checklists'));
     if (!await d.exists()) await d.create(recursive: true);
     return d;
   }

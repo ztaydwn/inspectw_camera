@@ -1,5 +1,6 @@
 // NUEVO WIDGET: Pantalla para ver foto a pantalla completa, con acciones
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/metadata_service.dart';
 import 'dart:io';
 import '../widgets/edit_description_sheet.dart';
@@ -24,6 +25,9 @@ class PhotoViewerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Obtener la instancia correcta del servicio desde el contexto
+    final meta = context.read<MetadataService>();
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -55,22 +59,26 @@ class PhotoViewerScreen extends StatelessWidget {
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text('¿Eliminar esta foto?'),
-                  content: const Text('La foto y su descripción se eliminarán permanentemente.'),
+                  content: const Text(
+                      'La foto y su descripción se eliminarán permanentemente.'),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
                         child: const Text('Cancelar')),
                     FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        style:
+                            FilledButton.styleFrom(backgroundColor: Colors.red),
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('Eliminar')),
                   ],
                 ),
               );
               if (confirm == true) {
-                await MetadataService().deletePhotoById(project, photoId);
+                // Usar la instancia correcta del servicio para borrar la foto
+                await meta.deletePhotoById(project, photoId);
+
+                // onDeleted() se encargará de refrescar la galería y cerrar esta pantalla
                 onDeleted();
-                if (context.mounted) Navigator.pop(context);
               }
             },
           ),
@@ -79,8 +87,10 @@ class PhotoViewerScreen extends StatelessWidget {
       body: Center(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final cacheWidth = (constraints.maxWidth * MediaQuery.of(context).devicePixelRatio).round();
-            
+            final cacheWidth =
+                (constraints.maxWidth * MediaQuery.of(context).devicePixelRatio)
+                    .round();
+
             return Image.file(
               File(imagePath),
               fit: BoxFit.contain,

@@ -87,28 +87,54 @@ class MetadataService with ChangeNotifier {
   }) async {
     await init();
 
-    final locationDir = await _storage.ensureLocation(project, location);
-    final newFileName = '${_uuid.v4()}.jpg';
-    final destinationPath = p.join(locationDir.path, newFileName);
+    // 1. Verificar que el archivo temporal existe
+    final xfilePath = xfile.path;
+    if (!await File(xfilePath).exists()) {
+      throw Exception('El archivo temporal no existe');
+    }
 
-    // Copy the file from its temp location to our app's permanent storage
-    await xfile.saveTo(destinationPath);
+    File? tempCopy;
+    try {
+      // 2. Crear copia temporal por si falla algo
+      tempCopy = await File(xfilePath).copy('${xfilePath}_temp');
 
-    // Create a relative path with our 'internal' prefix using URL-style separators
-    final relativePath = p.url.join('projects', project, location, newFileName);
-    final internalPath = 'internal/$relativePath';
+      // 3. Preparar el directorio y nombre del archivo
+      final locationDir = await _storage.ensureLocation(project, location);
+      final newFileName = '${_uuid.v4()}.jpg';
+      final destinationPath = p.join(locationDir.path, newFileName);
 
-    // Use the existing addPhoto method to create and save the metadata
-    final newEntry = await addPhoto(
-      project: project,
-      location: location,
-      fileName: newFileName,
-      relativePath: internalPath, // The crucial part
-      description: description,
-      takenAt: DateTime.now(),
-    );
+      // 4. Copiar el archivo a su ubicación final
+      await xfile.saveTo(destinationPath);
 
-    return newEntry;
+      // 5. Crear la ruta relativa
+      final relativePath =
+          p.url.join('projects', project, location, newFileName);
+      final internalPath = 'internal/$relativePath';
+
+      // 6. Agregar la metadata
+      final newEntry = await addPhoto(
+        project: project,
+        location: location,
+        fileName: newFileName,
+        relativePath: internalPath,
+        description: description,
+        takenAt: DateTime.now(),
+      );
+
+      // 7. Limpiar archivo temporal
+      if (tempCopy != null && await tempCopy.exists()) {
+        await tempCopy.delete();
+      }
+
+      return newEntry;
+    } catch (e) {
+      // En caso de error, limpiar archivos temporales
+      if (tempCopy != null && await tempCopy.exists()) {
+        await tempCopy.delete();
+      }
+      debugPrint('[MetadataService] Error importing photo: $e');
+      rethrow;
+    }
   }
 
   Future<List<String>> listProjects() async {
@@ -128,15 +154,31 @@ class MetadataService with ChangeNotifier {
   }
 
   Future<void> deleteProject(String project) async {
-    final dir = Directory(p.join(_storage.rootPath, 'projects', project));
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
+    // 1. Verificar si hay operaciones pendientes
+    if (_savingCount > 0) {
+      throw Exception(
+          'No se puede eliminar el proyecto mientras hay operaciones pendientes');
     }
-    _cache.remove(project);
-    _suggestions.remove(project);
-    _locationStatusCache.remove(project);
-    // The project directory is deleted recursively, so we don't need to
-    // delete individual files anymore.
+
+    try {
+      // 2. Limpiar todas las referencias en memoria
+      _cache.remove(project);
+      _suggestions.remove(project);
+      _locationStatusCache.remove(project);
+
+      // 3. Eliminar directorio del proyecto
+      final dir = Directory(p.join(_storage.rootPath, 'projects', project));
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[MetadataService] Error deleting project: $e');
+      // Recargar el proyecto en caso de error
+      await _load(project);
+      rethrow;
+    }
   }
 
   Future<List<String>> listLocations(String project) async {
@@ -158,6 +200,17 @@ class MetadataService with ChangeNotifier {
 
   Future<void> renameLocation(
       String project, String oldName, String newName) async {
+    // Validar que el nuevo nombre no exista
+    if (await _storage.locationExists(project, newName)) {
+      throw Exception('Ya existe una ubicación con ese nombre');
+    }
+
+    // Validar caracteres inválidos en el nombre
+    if (newName.contains(RegExp(r'[<>:"/\\|?*]'))) {
+      throw Exception('El nombre contiene caracteres inválidos');
+    }
+
+    // Proceder con el renombrado
     await _storage.renameLocation(project, oldName, newName);
 
     // Update photo entries
@@ -341,16 +394,51 @@ class MetadataService with ChangeNotifier {
     final list = _cache[project]!;
     final idx = list.indexWhere((e) => e.id == photoId);
     if (idx < 0) return;
+
     final entry = list[idx];
-    // The photo could be in DCIM or in the app's private storage
+
+    // 1. Actualizar contadores de sugerencias
+    if (_suggestions[project]?.containsKey(entry.description) ?? false) {
+      final count = _suggestions[project]![entry.description]!;
+      if (count <= 1) {
+        _suggestions[project]!.remove(entry.description);
+      } else {
+        _suggestions[project]![entry.description] = count - 1;
+      }
+    }
+
+    // 2. Limpiar referencias en checklists
+    final locations = await listLocations(project);
+    for (final location in locations) {
+      final checklist = await getChecklist(project, location);
+      if (checklist != null) {
+        bool changed = false;
+        for (final item in checklist.items) {
+          if (item.photoId == photoId) {
+            item.photoId = null;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await saveChecklist(project, checklist);
+        }
+      }
+    }
+
+    // 3. Eliminar archivo físico
     final file = await _storage.resolvePhotoFile(entry);
     try {
       if (file != null && await file.exists()) {
         await file.delete();
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[MetadataService] Error deleting photo file: $e');
+    }
+
+    // 4. Eliminar metadata y persistir cambios
     list.removeAt(idx);
     await _persist(project);
+    notifyListeners();
   }
 
   Future<void> _persist(String project) async {
@@ -728,11 +816,13 @@ class MetadataService with ChangeNotifier {
       return descriptions.toString();
     }
 
-    descriptions.writeln('--- INICIO DEL REPORTE COMPLETO DE DESCRIPCIONES ---');
+    descriptions
+        .writeln('--- INICIO DEL REPORTE COMPLETO DE DESCRIPCIONES ---');
     descriptions.writeln('Proyecto: $project');
     descriptions.writeln(
         'Exportado el: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
-    descriptions.writeln('Este reporte incluye TODAS las entradas de metadatos, incluyendo aquellas cuyo archivo de foto no se pudo encontrar.');
+    descriptions.writeln(
+        'Este reporte incluye TODAS las entradas de metadatos, incluyendo aquellas cuyo archivo de foto no se pudo encontrar.');
     descriptions.writeln('---');
 
     // This version does NOT check for file existence. It reports on all metadata entries.
@@ -745,7 +835,8 @@ class MetadataService with ChangeNotifier {
       // Add a warning if the file is missing
       final f = await _storage.resolvePhotoFile(photo);
       if (f == null || !await f.exists()) {
-        descriptions.writeln('  [AVISO: Archivo de foto no encontrado en la ruta: ${photo.relativePath}]');
+        descriptions.writeln(
+            '  [AVISO: Archivo de foto no encontrado en la ruta: ${photo.relativePath}]');
       }
       descriptions.writeln(); // Add a blank line for readability
     }
