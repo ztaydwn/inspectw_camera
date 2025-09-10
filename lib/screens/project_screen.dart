@@ -467,7 +467,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
-  Future<void> _exportProject() async {
+  Future<void> _exportFullProjectZip() async {
     final zipPath = await _buildZipForProject();
     if (zipPath == null) return;
 
@@ -504,7 +504,187 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
+  Future<void> _exportProjectByLocation() async {
+    setState(() {
+      _isExporting = true;
+      _zipProgress = 0.0;
+      _zipCurrent = 0;
+      _zipTotal = 0; // This will be updated with the total number of locations
+    });
+
+    try {
+      final locations = await meta.listLocations(widget.project);
+      if (locations.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('No hay ubicaciones para exportar.')));
+        }
+        return;
+      }
+
+      setState(() {
+        _zipTotal = locations.length; // Total number of ZIPs to create
+      });
+
+      for (int i = 0; i < locations.length; i++) {
+        final locationName = locations[i];
+        setState(() {
+          _zipCurrent = i + 1; // Current location being processed
+          _zipProgress = (i + 1) / locations.length; // Overall progress
+        });
+
+        // Call a new helper method to build and save the ZIP for this location
+        final zipPath = await _buildZipForLocation(widget.project, locationName);
+
+        if (zipPath == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Fallo al crear ZIP para: $locationName')));
+          }
+          // Continue to next location even if one fails
+          continue;
+        }
+
+        // Save the location ZIP to Downloads
+        try {
+          await MediaStore.ensureInitialized();
+          MediaStore.appFolder = kAppFolder;
+          await MediaStore().saveFile(
+            tempFilePath: zipPath,
+            dirType: DirType.download,
+            dirName: DirName.download,
+            relativePath: p.join(kAppFolder, widget.project, locationName), // Subfolder for location
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('ZIP de $locationName guardado en Descargas')));
+          }
+        } catch (e) {
+          debugPrint('[ZIP] Error saving location ZIP to MediaStore: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Fallo al guardar ZIP de $locationName: $e')));
+          }
+        } finally {
+          // Clean up temporary location ZIP file
+          try {
+            final tmpZip = File(zipPath);
+            if (await tmpZip.exists()) {
+              await tmpZip.delete();
+            } else {
+              debugPrint('[ZIP] Temp location ZIP not found (already moved/cleaned): $zipPath');
+            }
+          } catch (e) {
+            debugPrint('[ZIP] Failed to delete temp location ZIP file: $e');
+          }
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Exportación de ZIPs por ubicación completada.')));
+      }
+
+    } catch (e, s) {
+      debugPrint('[ZIP] Error exporting by location: $e\n$s');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error al exportar ZIPs por ubicación: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  Future<String?> _buildZipForLocation(String project, String locationName) async {
+    // This is a simplified version of _buildZipForProject, scoped to a location.
+    // Note: It still uses the project-wide reports.
+    // A future improvement could be location-specific reports.
+    try {
+      final allPhotos = await meta.listPhotos(project, location: locationName);
+      if (allPhotos.isEmpty) {
+        debugPrint('[ZIP] No photos found for location: $locationName');
+        return null; // No photos to zip for this location.
+      }
+
+      final photosWithPaths = <PhotoEntry>[];
+      final resolvedPaths = <String>[];
+      for (final photo in allPhotos) {
+        final f = await storage.resolvePhotoFile(photo);
+        if (f != null && await f.exists()) {
+          photosWithPaths.add(photo);
+          resolvedPaths.add(f.path);
+        }
+      }
+
+      if (photosWithPaths.isEmpty) {
+        debugPrint('[ZIP] No photo files could be resolved for location: $locationName');
+        return null;
+      }
+
+      // For now, we'll include the full project reports in each location zip.
+      final descriptions = await meta.generatePhotoDescriptionsReport(project);
+      final projectDataReport = await meta.generateProjectDataReport(project);
+
+      final params = CreateZipParams(
+        photos: photosWithPaths,
+        project: project,
+        // We use the location name in the zip filename
+        location: locationName,
+        descriptions: descriptions,
+        projectDataReport: projectDataReport,
+        resolvedPaths: resolvedPaths,
+      );
+
+      final recv = ReceivePort();
+      final completer = Completer<String?>();
+      
+      // We don't have a dedicated zip receive port for the location, so we can't use the main one.
+      // This means we won't get granular progress for each location's zip creation,
+      // but the main loop in _exportProjectByLocation gives overall progress.
+      // A more advanced implementation could manage multiple receive ports.
+      
+      recv.listen((msg) {
+        if (msg is Map) {
+          final type = msg['type'];
+          if (type == 'done') {
+            completer.complete(msg['zipPath'] as String?);
+            recv.close();
+          } else if (type == 'error') {
+            completer.complete(null);
+            recv.close();
+          }
+          // We ignore 'progress' messages here for simplicity
+        }
+      });
+
+      await Isolate.spawn(
+        createZipWithProgressIsolate, // We can reuse the same isolate entrypoint
+        {
+          'sendPort': recv.sendPort,
+          'params': params,
+        },
+        errorsAreFatal: true,
+      );
+
+      final zipPath = await completer.future;
+
+      if (zipPath != null) {
+        debugPrint('[ZIP] Created location ZIP: $zipPath');
+      } else {
+        debugPrint('[ZIP] Failed to create ZIP for location: $locationName');
+      }
+
+      return zipPath;
+
+    } catch (e, s) {
+      debugPrint('[ZIP] Error building location ZIP for $locationName: $e\n$s');
+      return null;
+    }
+  }
+
   Future<void> _uploadToDrive() async {
+    if (_isUploading) return;
     setState(() => _isUploading = true);
     try {
       debugPrint('📤 Iniciando subida al Drive...');
@@ -668,8 +848,11 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 case 'import':
                   _importPhotos();
                   break;
-                case 'export':
-                  _exportProject();
+                case 'export_project_zip':
+                  _exportFullProjectZip();
+                  break;
+                case 'export_location_zips':
+                  _exportProjectByLocation();
                   break;
                 case 'upload':
                   _uploadToDrive();
@@ -697,10 +880,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
                 ),
               ),
               const PopupMenuItem<String>(
-                value: 'export',
+                value: 'export_project_zip',
                 child: ListTile(
                   leading: Icon(Icons.ios_share),
-                  title: Text('Exportar ZIP'),
+                  title: Text('Exportar ZIP (Proyecto Completo)'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'export_location_zips',
+                child: ListTile(
+                  leading: Icon(Icons.folder_zip_outlined),
+                  title: Text('Exportar ZIPs (Por Ubicación)'),
                 ),
               ),
               const PopupMenuItem<String>(

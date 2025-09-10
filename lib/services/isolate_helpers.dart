@@ -144,6 +144,7 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
 class CreateZipParams {
   final List<PhotoEntry> photos;
   final String project;
+  final String? location; // Can be null for full project export
   final String descriptions;
   final String projectDataReport; // Added
   final List<String> resolvedPaths;
@@ -151,6 +152,7 @@ class CreateZipParams {
   CreateZipParams(
       {required this.photos,
       required this.project,
+      this.location,
       required this.descriptions,
       required this.projectDataReport, // Added
       required this.resolvedPaths});
@@ -158,8 +160,9 @@ class CreateZipParams {
 
 /// ISOLATE: Creates a zip file from photos.
 Future<String?> createZipIsolate(CreateZipParams params) async {
+  final locationPart = params.location != null ? '_${params.location}' : '';
   final zipName =
-      '${params.project}_${DateTime.now().millisecondsSinceEpoch}.zip';
+      '${params.project}${locationPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
   final zipPath = p.join(Directory.systemTemp.path, zipName);
   final encoder = ZipFileEncoder();
   encoder.create(zipPath);
@@ -180,8 +183,8 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
       ArchiveFile('descriptions.txt', descBytes.length, descBytes));
 
   final projectDataBytes = utf8.encode(params.projectDataReport);
-  encoder.addArchiveFile(
-      ArchiveFile('infoproyect.txt', projectDataBytes.length, projectDataBytes));
+  encoder.addArchiveFile(ArchiveFile(
+      'infoproyect.txt', projectDataBytes.length, projectDataBytes));
 
   encoder.close();
   return zipPath;
@@ -196,9 +199,11 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
   final CreateZipParams params = args['params'] as CreateZipParams;
 
   try {
-    final total = params.photos.length + 2; // photos + descriptions + infoproyect
+    final total =
+        params.photos.length + 2; // photos + descriptions + infoproyect
+    final locationPart = params.location != null ? '_${params.location}' : '';
     final zipName =
-        '${params.project}_${DateTime.now().millisecondsSinceEpoch}.zip';
+        '${params.project}${locationPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
     final zipPath = p.join(Directory.systemTemp.path, zipName);
 
     final encoder = ZipFileEncoder();
@@ -222,15 +227,21 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
     final descBytes = utf8.encode(params.descriptions);
     encoder.addArchiveFile(
         ArchiveFile('descriptions.txt', descBytes.length, descBytes));
-    sendPort.send(
-        {'type': 'progress', 'current': params.photos.length + 1, 'total': total});
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 1,
+      'total': total
+    });
 
     // Add infoproyect.txt
     final projectDataBytes = utf8.encode(params.projectDataReport);
-    encoder.addArchiveFile(
-        ArchiveFile('infoproyect.txt', projectDataBytes.length, projectDataBytes));
-    sendPort.send(
-        {'type': 'progress', 'current': params.photos.length + 2, 'total': total});
+    encoder.addArchiveFile(ArchiveFile(
+        'infoproyect.txt', projectDataBytes.length, projectDataBytes));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 2,
+      'total': total
+    });
 
     encoder.close();
     sendPort.send({'type': 'done', 'zipPath': zipPath});
