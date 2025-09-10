@@ -148,13 +148,16 @@ class StorageService {
       return null;
     }
 
-    // Reconstruye el content URI a partir de la ruta relativa guardada.
-    final Uri contentUri = Uri.parse('content://media$relativePath');
+    // Si se almacenó el URI completo (content://...), úsalo tal cual.
+    // De lo contrario, reconstruye con el prefijo 'content://media'.
+    final Uri contentUri = relativePath.startsWith('content://')
+        ? Uri.parse(relativePath)
+        : Uri.parse('content://media$relativePath');
 
     try {
       final mediaStore = MediaStore();
-      final String? filePath =
-          await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
+      final String? filePath = await mediaStore
+          .getFilePathFromUri(uriString: contentUri.toString());
 
       if (filePath == null) {
         debugPrint('Could not resolve file path from URI: $contentUri');

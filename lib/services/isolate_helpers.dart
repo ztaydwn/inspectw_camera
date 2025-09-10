@@ -105,16 +105,48 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
   final processed = await processPhotoIsolate(params);
   if (processed == null) return null;
 
+  // Fallback para plataformas no-Android: guardar en almacenamiento interno de la app
+  if (!Platform.isAndroid) {
+    final appDir = await getApplicationDocumentsDirectory();
+    final locationDir = Directory(
+        p.join(appDir.path, 'projects', params.project, params.location));
+    if (!locationDir.existsSync()) {
+      locationDir.createSync(recursive: true);
+    }
+    final newName = p.basename(processed.filePath);
+    final destPath = p.join(locationDir.path, newName);
+
+    await File(processed.filePath).copy(destPath);
+
+    // Limpiar temporal si aplica
+    if (processed.isTempFile) {
+      try {
+        final tempFile = File(processed.filePath);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (e) {
+        debugPrint('[Isolate] Failed to delete temp file: $e');
+      }
+    }
+
+    final relative = p.url.join(
+        'projects', params.project, params.location, p.basename(destPath));
+    return SavePhotoResult(
+      fileName: p.basename(destPath),
+      relativePath: 'internal/$relative',
+      description: params.description,
+    );
+  }
+
+  // Android: guardar en MediaStore (DCIM/<proyecto>/<ubicacion>)
   await MediaStore.ensureInitialized();
-  // Guardar fotos en DCIM/<proyecto>/<ubicacion>.
-  // Usamos relativePath con "proyecto/ubicacion"; el appFolder no se usa por DCIM.
   MediaStore.appFolder = kAppFolder; // mantener consistente con inicialización
   final mediaStore = MediaStore();
   final saveInfo = await mediaStore.saveFile(
     tempFilePath: processed.filePath,
     dirType: DirType.photo,
     dirName: DirName.dcim,
-    // Usar la ruta relativa completa para crear DCIM/<proyecto>/<ubicacion>.
     relativePath: '${params.project}/${params.location}',
   );
 
@@ -136,7 +168,8 @@ Future<SavePhotoResult?> savePhotoIsolate(SavePhotoParams params) async {
 
   return SavePhotoResult(
     fileName: saveInfo.name,
-    relativePath: saveInfo.uri.path,
+    // Guardar el content URI COMPLETO para mayor estabilidad entre dispositivos
+    relativePath: saveInfo.uri.toString(),
     description: params.description, // Pass description through
   );
 }
@@ -149,6 +182,11 @@ class CreateZipParams {
   final String descriptions;
   final String projectDataReport; // Added
   final List<String> resolvedPaths;
+  // Raw JSONs to include in the ZIP
+  final String rawMetadataJson;
+  final String rawDescriptionsJson;
+  final String rawLocationStatusJson;
+  final String rawProjectDataJson;
 
   CreateZipParams(
       {required this.photos,
@@ -156,7 +194,11 @@ class CreateZipParams {
       this.location,
       required this.descriptions,
       required this.projectDataReport, // Added
-      required this.resolvedPaths});
+      required this.resolvedPaths,
+      required this.rawMetadataJson,
+      required this.rawDescriptionsJson,
+      required this.rawLocationStatusJson,
+      required this.rawProjectDataJson});
 }
 
 /// ISOLATE: Creates a zip file from photos.
@@ -188,6 +230,20 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   encoder.addArchiveFile(ArchiveFile(
       'infoproyect.txt', projectDataBytes.length, projectDataBytes));
 
+  // Add raw JSON data files under data/
+  final metaJson = utf8.encode(params.rawMetadataJson);
+  encoder.addArchiveFile(
+      ArchiveFile('data/metadata.json', metaJson.length, metaJson));
+  final descJson = utf8.encode(params.rawDescriptionsJson);
+  encoder.addArchiveFile(
+      ArchiveFile('data/descriptions.json', descJson.length, descJson));
+  final statusJson = utf8.encode(params.rawLocationStatusJson);
+  encoder.addArchiveFile(ArchiveFile(
+      'data/location_status.json', statusJson.length, statusJson));
+  final projectDataJson = utf8.encode(params.rawProjectDataJson);
+  encoder.addArchiveFile(ArchiveFile(
+      'data/project_data.json', projectDataJson.length, projectDataJson));
+
   encoder.close();
   return zipPath;
 }
@@ -201,7 +257,7 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
   final CreateZipParams params = args['params'] as CreateZipParams;
 
   try {
-    final total = params.photos.length + 2; // photos + descriptions + infoproyect
+    final total = params.photos.length + 6; // photos + descriptions + infoproyect + 4 JSONs
     final proj = sanitizeFileName(params.project);
     final locPart = params.location != null ? '_${sanitizeFileName(params.location!)}' : '';
     final zipName = '$proj${locPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
@@ -209,6 +265,8 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
 
     final encoder = ZipFileEncoder();
     encoder.create(zipPath);
+    // Notify the main isolate of the temp ZIP path for potential cancellation cleanup
+    sendPort.send({'type': 'started', 'zipPath': zipPath, 'total': total});
 
     for (var i = 0; i < params.photos.length; i++) {
       final photo = params.photos[i];
@@ -241,6 +299,43 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
     sendPort.send({
       'type': 'progress',
       'current': params.photos.length + 2,
+      'total': total
+    });
+
+    // Add raw JSONs under data/
+    final metaJson = utf8.encode(params.rawMetadataJson);
+    encoder.addArchiveFile(
+        ArchiveFile('data/metadata.json', metaJson.length, metaJson));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 3,
+      'total': total
+    });
+
+    final descJson = utf8.encode(params.rawDescriptionsJson);
+    encoder.addArchiveFile(
+        ArchiveFile('data/descriptions.json', descJson.length, descJson));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 4,
+      'total': total
+    });
+
+    final statusJson = utf8.encode(params.rawLocationStatusJson);
+    encoder.addArchiveFile(ArchiveFile(
+        'data/location_status.json', statusJson.length, statusJson));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 5,
+      'total': total
+    });
+
+    final projectDataJson = utf8.encode(params.rawProjectDataJson);
+    encoder.addArchiveFile(ArchiveFile(
+        'data/project_data.json', projectDataJson.length, projectDataJson));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 6,
       'total': total
     });
 

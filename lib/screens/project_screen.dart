@@ -80,6 +80,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
   int _zipCurrent = 0;
   int _zipTotal = 0;
   ReceivePort? _zipReceivePort;
+  Isolate? _zipIsolate;
+  String? _currentZipTempPath;
   Future<List<_LocationInfo>>? _locationsFuture;
   bool _isGridView = true;
 
@@ -365,6 +367,28 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final projectDataReport =
           await meta.generateProjectDataReport(widget.project);
 
+      // Load raw JSON files to include in ZIP
+      String rawMetadataJson = '[]';
+      String rawDescriptionsJson = '{}';
+      String rawLocationStatusJson = '[]';
+      String rawProjectDataJson = '{}';
+      try {
+        final mf = storage.metadataFile(widget.project);
+        if (await mf.exists()) rawMetadataJson = await mf.readAsString();
+      } catch (_) {}
+      try {
+        final df = storage.descriptionsFile(widget.project);
+        if (await df.exists()) rawDescriptionsJson = await df.readAsString();
+      } catch (_) {}
+      try {
+        final sf = storage.locationStatusFile(widget.project);
+        if (await sf.exists()) rawLocationStatusJson = await sf.readAsString();
+      } catch (_) {}
+      try {
+        final pf = storage.projectDataFile(widget.project);
+        if (await pf.exists()) rawProjectDataJson = await pf.readAsString();
+      } catch (_) {}
+
       if (Platform.isAndroid) {
         PermissionStatus permStatus;
         final androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -389,10 +413,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
         descriptions: descriptions,
         projectDataReport: projectDataReport,
         resolvedPaths: resolvedPaths,
+        rawMetadataJson: rawMetadataJson,
+        rawDescriptionsJson: rawDescriptionsJson,
+        rawLocationStatusJson: rawLocationStatusJson,
+        rawProjectDataJson: rawProjectDataJson,
       );
       // Initialize progress
       setState(() {
-        _zipTotal = photosWithPaths.length + 2;
+        _zipTotal = photosWithPaths.length + 6;
         _zipCurrent = 0;
         _zipProgress = 0.0;
       });
@@ -404,7 +432,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
       recv.listen((msg) {
         if (msg is Map) {
           final type = msg['type'];
-          if (type == 'progress') {
+          if (type == 'started') {
+            _currentZipTempPath = msg['zipPath'] as String?;
+            final total = (msg['total'] as int?) ?? _zipTotal;
+            if (mounted) {
+              setState(() {
+                _zipTotal = total;
+              });
+            }
+          } else if (type == 'progress') {
             final current = (msg['current'] as int?) ?? 0;
             final total = (msg['total'] as int?) ?? _zipTotal;
             if (mounted) {
@@ -418,15 +454,18 @@ class _ProjectScreenState extends State<ProjectScreen> {
             completer.complete(msg['zipPath'] as String?);
             _zipReceivePort?.close();
             _zipReceivePort = null;
+            _zipIsolate = null;
+            _currentZipTempPath = null;
           } else if (type == 'error') {
             completer.complete(null);
             _zipReceivePort?.close();
             _zipReceivePort = null;
+            _zipIsolate = null;
           }
         }
       });
 
-      await Isolate.spawn(
+      _zipIsolate = await Isolate.spawn(
         createZipWithProgressIsolate,
         {
           'sendPort': recv.sendPort,
@@ -465,6 +504,43 @@ class _ProjectScreenState extends State<ProjectScreen> {
       return null;
     } finally {
       if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  void _cancelZipExport() async {
+    // Kill isolate if running
+    try {
+      _zipIsolate?.kill(priority: Isolate.immediate);
+    } catch (_) {}
+    _zipIsolate = null;
+    // Close receive port
+    try {
+      _zipReceivePort?.close();
+    } catch (_) {}
+    _zipReceivePort = null;
+    // Delete partial temp zip if known
+    final path = _currentZipTempPath;
+    _currentZipTempPath = null;
+    if (path != null) {
+      try {
+        final f = File(path);
+        if (await f.exists()) {
+          await f.delete();
+          debugPrint('[ZIP] Cancelled and deleted temp: $path');
+        }
+      } catch (e) {
+        debugPrint('[ZIP] Failed to delete cancelled temp: $e');
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _isExporting = false;
+        _zipProgress = 0.0;
+        _zipCurrent = 0;
+        _zipTotal = 0;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Exportación cancelada')));
     }
   }
 
@@ -633,6 +709,28 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final descriptions = await meta.generatePhotoDescriptionsReport(project);
       final projectDataReport = await meta.generateProjectDataReport(project);
 
+      // Load raw JSON files to include in ZIP
+      String rawMetadataJson = '[]';
+      String rawDescriptionsJson = '{}';
+      String rawLocationStatusJson = '[]';
+      String rawProjectDataJson = '{}';
+      try {
+        final mf = storage.metadataFile(project);
+        if (await mf.exists()) rawMetadataJson = await mf.readAsString();
+      } catch (_) {}
+      try {
+        final df = storage.descriptionsFile(project);
+        if (await df.exists()) rawDescriptionsJson = await df.readAsString();
+      } catch (_) {}
+      try {
+        final sf = storage.locationStatusFile(project);
+        if (await sf.exists()) rawLocationStatusJson = await sf.readAsString();
+      } catch (_) {}
+      try {
+        final pf = storage.projectDataFile(project);
+        if (await pf.exists()) rawProjectDataJson = await pf.readAsString();
+      } catch (_) {}
+
       final params = CreateZipParams(
         photos: photosWithPaths,
         project: project,
@@ -641,6 +739,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
         descriptions: descriptions,
         projectDataReport: projectDataReport,
         resolvedPaths: resolvedPaths,
+        rawMetadataJson: rawMetadataJson,
+        rawDescriptionsJson: rawDescriptionsJson,
+        rawLocationStatusJson: rawLocationStatusJson,
+        rawProjectDataJson: rawProjectDataJson,
       );
 
       final recv = ReceivePort();
@@ -1300,6 +1402,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     Text(_zipTotal > 0
                         ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%'
                         : '...'),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      onPressed: _cancelZipExport,
+                      tooltip: 'Cancelar exportación',
+                      icon: const Icon(Icons.close),
+                    ),
                   ],
                 ),
               ),
