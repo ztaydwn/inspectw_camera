@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:media_store_plus/media_store_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path/path.dart' as p;
@@ -133,15 +134,16 @@ class _ProjectScreenState extends State<ProjectScreen> {
       final report = await meta.generateProjectReport(widget.project);
 
       // 2. Llamar al método de exportación simplificado.
-      final savedFile = await storage.exportReportToDownloads(
+      final savedPath = await storage.exportReportToDownloads(
         project: widget.project,
         reportContent: report,
       );
 
-      if (mounted) {
+      if (savedPath != null && mounted) {
+        await _handleExportedFile(savedPath, 'Reporte de Proyecto');
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Archivo $savedFile copiado a Descargas')),
-        );
+            const SnackBar(content: Text('No se pudo generar el reporte.')));
       }
     } catch (e) {
       debugPrint('Error al copiar archivos de datos: $e');
@@ -544,44 +546,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
-  Future<void> _exportFullProjectZip() async {
-    final zipPath = await _buildZipForProject();
-    if (zipPath == null) return;
-
-    try {
-      await MediaStore.ensureInitialized();
-      MediaStore.appFolder = kAppFolder;
-      await MediaStore().saveFile(
-        tempFilePath: zipPath,
-        dirType: DirType.download,
-        dirName: DirName.download,
-        relativePath:
-            p.posix.join(kAppFolder, sanitizeDir(widget.project)),
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ZIP saved to Download/$kAppFolder')));
-      }
-    } catch (e) {
-      debugPrint('[ZIP] Error saving to MediaStore: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to save ZIP to Download: $e')));
-      }
-    } finally {
-      try {
-        final tmpZip = File(zipPath);
-        if (await tmpZip.exists()) {
-          await tmpZip.delete();
-        } else {
-          debugPrint('[ZIP] Temp not found (already moved/cleaned): $zipPath');
-        }
-      } catch (e) {
-        debugPrint('[ZIP] Failed to delete temp file: $e');
-      }
-    }
-  }
-
   Future<void> _exportProjectByLocation() async {
     setState(() {
       _isExporting = true;
@@ -633,8 +597,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
             dirType: DirType.download,
             dirName: DirName.download,
             // Subfolder for location; sanitize names and use POSIX separators
-            relativePath: p.posix.join(
-                kAppFolder, sanitizeDir(widget.project), sanitizeDir(locationName)),
+            relativePath: p.posix.join(kAppFolder, sanitizeDir(widget.project),
+                sanitizeDir(locationName)),
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -791,6 +755,80 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
+  Future<void> _exportFullProjectZip() async {
+    final zipPath = await _buildZipForProject();
+    if (zipPath == null) return;
+
+    if (mounted) {
+      await _handleExportedFile(zipPath, 'Archivo ZIP del Proyecto');
+    }
+  }
+
+  /// Muestra un diálogo para que el usuario decida si comparte o guarda el archivo.
+  Future<void> _handleExportedFile(String path, String fileType) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$fileType generado'),
+        content: const Text('¿Qué deseas hacer con el archivo?'),
+        actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.save_alt),
+            label: const Text('Guardar en Descargas'),
+            onPressed: () => Navigator.pop(context, 'save'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.share),
+            label: const Text('Compartir'),
+            onPressed: () => Navigator.pop(context, 'share'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == 'share') {
+      final xfile = XFile(path);
+      final result = await SharePlus.instance.share(ShareParams(
+        files: [xfile],
+        text: 'Archivo del proyecto: ${widget.project}',
+      ));
+
+      if (result.status == ShareResultStatus.success) {
+        messenger
+            .showSnackBar(const SnackBar(content: Text('Archivo compartido.')));
+      }
+    } else if (choice == 'save') {
+      try {
+        await MediaStore.ensureInitialized();
+        MediaStore.appFolder = kAppFolder;
+        await MediaStore().saveFile(
+          tempFilePath: path,
+          dirType: DirType.download,
+          dirName: DirName.download,
+          relativePath: p.posix.join(kAppFolder, sanitizeDir(widget.project)),
+        );
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Archivo guardado en Descargas/$kAppFolder')));
+      } catch (e) {
+        debugPrint('[SAVE] Error saving to MediaStore: $e');
+        messenger.showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+      }
+    }
+
+    // Limpiar el archivo temporal después de la acción (compartir o guardar)
+    // MediaStore lo mueve, pero Share lo copia, así que es bueno asegurarse.
+    try {
+      final tempFile = File(path);
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+        debugPrint('[CLEANUP] Deleted temp file: $path');
+      }
+    } catch (e) {
+      debugPrint('[CLEANUP] Failed to delete temp file: $e');
+    }
+  }
+
   Future<void> _uploadToDrive() async {
     if (_isUploading) return;
     setState(() => _isUploading = true);
@@ -912,7 +950,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Proyecto: ${widget.project}',
-            style: const TextStyle(fontSize: 18.0)),
+            style: const TextStyle(fontSize: 16.0)),
         actions: [
           IconButton(
             icon: Icon(_isGridView ? Icons.view_list : Icons.view_module),
@@ -921,19 +959,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
               setState(() {
                 _isGridView = !_isGridView;
               });
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.playlist_add_check),
-            tooltip: 'Checklist de Ubicaciones',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      LocationChecklistScreen(project: widget.project),
-                ),
-              ).then((_) => _refreshLocations());
             },
           ),
           IconButton(
@@ -953,6 +978,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
           PopupMenuButton<String>(
             onSelected: (value) async {
               switch (value) {
+                case 'location_checklist':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          LocationChecklistScreen(project: widget.project),
+                    ),
+                  ).then((_) => _refreshLocations());
+                  break;
                 case 'import':
                   _importPhotos();
                   break;
@@ -979,16 +1013,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   break;
                 case 'export_metadata':
                   try {
-                    final fileName =
-                        await meta.exportMetadataFile(widget.project);
-                    if (!context.mounted) return;
-                    {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Exportado: $fileName')),
-                      );
+                    final path = await meta.exportMetadataFile(widget.project);
+                    if (path != null && context.mounted) {
+                      await _handleExportedFile(path, 'Backup de Metadatos');
+                    } else if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('No se pudo exportar.')));
                     }
                   } catch (e) {
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error: $e')),
                       );
@@ -997,16 +1030,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   break;
                 case 'export_descriptions':
                   try {
-                    final fileName =
+                    final path =
                         await meta.exportDescriptionsFile(widget.project);
-                    if (!context.mounted) return;
-                    {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Exportado: $fileName')),
-                      );
+                    if (path != null && context.mounted) {
+                      await _handleExportedFile(
+                          path, 'Backup de Descripciones');
+                    } else if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('No se pudo exportar.')));
                     }
                   } catch (e) {
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error: $e')),
                       );
@@ -1020,23 +1054,18 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     final report =
                         await meta.generateTolerantPhotoDescriptionsReport(
                             widget.project);
-                    final savedFile = await storage.exportReportToDownloads(
+                    final savedPath = await storage.exportReportToDownloads(
                       project: widget.project,
                       reportContent: report,
                       customFileName:
                           '${widget.project}_descriptions_report_completo.txt',
                     );
-                    if (!context.mounted) return;
-                    {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content:
-                                Text('Reporte forzado copiado: $savedFile')),
-                      );
+                    if (savedPath != null && context.mounted) {
+                      await _handleExportedFile(savedPath, 'Reporte Completo');
                     }
                   } catch (e) {
                     debugPrint('Error al forzar reporte: $e');
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error al forzar reporte: $e')),
                       );
@@ -1050,6 +1079,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
               }
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'location_checklist',
+                child: ListTile(
+                  leading: Icon(Icons.playlist_add_check),
+                  title: Text('Checklist de Ubicaciones'),
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem<String>(
                 value: 'import',
                 child: ListTile(
@@ -1223,7 +1260,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                               : Icons.place_outlined),
                           title: Text(
                             loc,
-                            style: theme.textTheme.titleMedium,
+                            style: theme.textTheme.bodyMedium,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1298,7 +1335,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     leading: Icon(isChecklist
                         ? Icons.checklist_rtl
                         : Icons.place_outlined),
-                    title: Text(loc),
+                    title: Text(loc, style: theme.textTheme.bodyMedium),
                     subtitle:
                         Text(isChecklist ? 'Checklist' : 'Galería de fotos'),
                     trailing: Row(
@@ -1370,54 +1407,65 @@ class _ProjectScreenState extends State<ProjectScreen> {
           return _isGridView ? buildGridView() : buildListView();
         },
       ),
-      bottomNavigationBar: _isExporting
-          ? Material(
-              elevation: 8,
-              color: Colors.white,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                              _zipCurrent < _zipTotal
-                                  ? 'Comprimiendo archivo $_zipCurrent de $_zipTotal...'
-                                  : 'Finalizando...',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 8),
-                          LinearProgressIndicator(
-                            value: _zipTotal > 0 ? _zipProgress : null,
-                            minHeight: 6,
+      bottomNavigationBar:
+          _isExporting // Muestra la barra de progreso si se está exportando
+              ? Material(
+                  elevation: 8,
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                  _zipCurrent < _zipTotal
+                                      ? 'Comprimiendo archivo $_zipCurrent de $_zipTotal...'
+                                      : 'Finalizando...',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              LinearProgressIndicator(
+                                value: _zipTotal > 0 ? _zipProgress : null,
+                                minHeight: 6,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_zipTotal > 0
+                            ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%'
+                            : '...'),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          onPressed: _cancelZipExport,
+                          tooltip: 'Cancelar exportación',
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Text(_zipTotal > 0
-                        ? '${(_zipProgress * 100).clamp(0, 100).toStringAsFixed(0)}%'
-                        : '...'),
-                    const SizedBox(width: 12),
-                    IconButton(
-                      onPressed: _cancelZipExport,
-                      tooltip: 'Cancelar exportación',
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
+                  ),
+                )
+              : BottomAppBar(
+                  // Si no, muestra la barra de navegación inferior
+                  shape: const CircularNotchedRectangle(),
+                  notchMargin: 8.0,
+                  child: Container(
+                    height: 60.0, // Altura de la barra
+                  ),
                 ),
-              ),
-            )
-          : null,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addLocation,
-        tooltip: 'Nueva ubicación',
-        child: const Icon(Icons.add_location_alt_outlined),
-      ),
+      floatingActionButton: _isExporting
+          ? null // Oculta el botón mientras se exporta
+          : FloatingActionButton(
+              onPressed: _addLocation,
+              tooltip: 'Nueva ubicación',
+              child: const Icon(Icons.add_location_alt_outlined),
+            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 }

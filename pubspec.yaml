@@ -19,12 +19,13 @@ dependencies:
   image: ^4.1.7        # para el recorte sin deformar
   media_store_plus: 0.1.3  # para guardar en galería (Android)
   path: ^1.8.0 # para manipular rutas de archivos 
-  device_info_plus: ^11.5.0 # para detectar si es Android 10+ y usar DCIM
+  device_info_plus: ^10.1.2 # para detectar si es Android 10+ y usar DCIM
   diacritic: ^0.1.4
   speech_to_text: ^7.3.0
   http: ^0.13.5
   http_parser: ^4.0.3
   flutter_native_splash: ^2.4.4
+  share_plus: 12.0.0
   image_picker: ^1.2.0
 
 dev_dependencies:

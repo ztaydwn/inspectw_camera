@@ -156,8 +156,8 @@ class StorageService {
 
     try {
       final mediaStore = MediaStore();
-      final String? filePath = await mediaStore
-          .getFilePathFromUri(uriString: contentUri.toString());
+      final String? filePath =
+          await mediaStore.getFilePathFromUri(uriString: contentUri.toString());
 
       if (filePath == null) {
         debugPrint('Could not resolve file path from URI: $contentUri');
@@ -213,8 +213,8 @@ class StorageService {
   }
 
   /// Exporta un reporte de texto a la carpeta pública de "Descargas" del dispositivo.
-  /// Retorna el nombre del archivo guardado.
-  Future<String> exportReportToDownloads({
+  /// Retorna la ruta completa del archivo guardado.
+  Future<String?> exportReportToDownloads({
     required String project,
     required String reportContent,
     String? customFileName,
@@ -230,18 +230,23 @@ class StorageService {
     MediaStore.appFolder = kAppFolder;
 
     final tempDir = await getTemporaryDirectory();
-    final fileName = sanitizeFileName(customFileName ?? '${project}_report.txt');
+    final fileName =
+        sanitizeFileName(customFileName ?? '${project}_report.txt');
     final tempReportFile = File(p.join(tempDir.path, fileName));
     await tempReportFile.writeAsString(reportContent);
 
-    await mediaStore.saveFile(
+    final saveInfo = await mediaStore.saveFile(
       tempFilePath: tempReportFile.path,
       dirType: DirType.download,
       dirName: DirName.download,
       relativePath: p.posix.join(kAppFolder, sanitizeDir(project)),
     );
 
-    // MediaStore MUEVE el archivo, así que no necesitamos borrar el temporal.
-    return fileName;
+    if (saveInfo != null && saveInfo.isSuccessful) {
+      // MediaStore MUEVE el archivo, así que no necesitamos borrar el temporal.
+      return await mediaStore.getFilePathFromUri(
+          uriString: saveInfo.uri.toString());
+    }
+    return null;
   }
 }

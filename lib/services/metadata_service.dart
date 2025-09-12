@@ -122,7 +122,8 @@ class MetadataService with ChangeNotifier {
       );
 
       // 7. Limpiar archivo temporal
-      if (tempCopy != null && await tempCopy.exists()) {
+      if (await tempCopy.exists()) {
+        //se puede borrar tempCopy != null &&
         await tempCopy.delete();
       }
 
@@ -777,7 +778,7 @@ class MetadataService with ChangeNotifier {
   // --- Raw Data Export Methods ---
 
   /// Exports the raw metadata.json file to the Downloads folder.
-  Future<String> exportMetadataFile(String project) async {
+  Future<String?> exportMetadataFile(String project) async {
     final metaFile = _storage.metadataFile(project);
     if (!await metaFile.exists()) {
       throw Exception('metadata.json not found for project $project');
@@ -792,7 +793,7 @@ class MetadataService with ChangeNotifier {
   }
 
   /// Exports the raw descriptions.json file to the Downloads folder.
-  Future<String> exportDescriptionsFile(String project) async {
+  Future<String?> exportDescriptionsFile(String project) async {
     final descFile = _storage.descriptionsFile(project);
     if (!await descFile.exists()) {
       throw Exception('descriptions.json not found for project $project');
