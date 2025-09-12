@@ -1,5 +1,5 @@
 const String kAppFolder = 'InspectW';
-const Map<String, List<String>> kDescriptionGroups = {
+const Map<String, List<String>> kInstitucionesEducativasGroups = {
   'A. EXTINTORES': [
     '1.3.2	Está en un lugar accesible?',
     '1.3.2	Está colgado o en pedestal?',
@@ -167,4 +167,68 @@ const Map<String, List<String>> kDescriptionGroups = {
     '3.3.6	Hay espejos o vidrios primarios sin la lamina de seguridad?',
     'S/N	Otras observaciones',
   ],
+};
+
+/// Copia de la lista de Instituciones Educativas para ser modificada.
+const Map<String, List<String>> kAnexo7aGroups = {
+  'A. GENERAL': [
+    '1.1.1	Los medios de evacuación (pasadizos, escaleras, accesos y salidas) del establecimiento presentan un ancho mínimo de 1.20 m y/o que permitan la evacuación de las personas de manera segura.',
+    '1.1.3	El establecimiento cuenta con señalización de seguridad (direccionales de salida, salida, zona segura en caso de sismo, riesgo eléctrico, extintores, otros).',
+    '1.2.4	No utiliza conductores flexibles (tipo mellizo) en instalaciones permanentes de alumbrado y/o tomacorriente.',
+    '1.2.7	La alimentación eléctrica a la bomba de agua contra incendios es independiente, no controlada por el interruptor general del edificio e interconectada al grupo electrógeno de emergencia del edificio, en caso de tenerlo.',
+    'S/N	Cuenta con botiquin?',
+    'S/N	Otras observaciones',
+  ],
+  'B. MEDIOS PROTECCION CONTRA INCENDIOS': [
+    '1.3.4	Cuenta con plan de seguridad para hacer frente a los riesgos de incendio y otros vinculados a la actividad, para establecimientos de dos a más pisos.',
+    '1.3.5	Las mangueras del tipo flexible de los cilindros (balones) de Gas Licuado de Petróleo (GLP) tipo 10 (de capacidad hasta 25kg) se encuentran en buen estado de conservación (sin rajaduras, libres de grasa, limpias, con sujeción firme con abrazaderas.',
+    '1.3.6	Las instalaciones de GLP que utilizan cilindros tipo 45 (de capacidad mayor a 25Kg), tienen tuberías de cobre o fierro galvanizado.',
+    '1.3.7	Los cilindros de GLP están alejados de interruptores a una distancia mayor a 0.30m, y mayor a 0.50m de tomacorrientes, se ubican en lugares ventilados y alejados de cualquier fuente de calor.',
+    '1.3.8	Los cilindros de GLP no se encuentran ubicados en nivel de semisótano, sótanos, cajas de escalera, pasillos, pasadizos de uso común y vía pública.',
+    '1.3.9	En escaleras presurizadas, la alimentación de energía para los motores del ventilador  debe contar con dos fuentes independientes, de transferencia automática.',
+    '1.3.10	El sistema de presurización se encuentra en buen estado de conservación y operativo.',
+    '1.3.11	Cuenta con un sistema de proteccion contraincendios a base de agua en función al tipo de edificación, área, altura, y clasificacion del riesgo.',
+    '1.3.12	Para todas las edificaciones se debe cumplir con las distancias máximas de recorrido hasta una zona segura exterior o hasta una escalera del tipo de evacuación. Los rociadores son de uso obligatorio en las edificaciones donde sea requerido de acuerdo a la norma en particular de cada tipo de edificación.',
+    '1.4.1	Cuenta con un sistema de detección y alarma de incendios centralizado operativo. Se encuentran exceptuados.',
+    '1.4.2	Cuenta con extintores operativos en cantidad adecuada de acetato de potasio para ambientes que cuentan con freidora, producen humos y vapores de grasa.',
+    '1.9.1	En salas de calderas, la puerta se ubica a una distancia no mayor de 15 metros y abre hacia afuera.Cerramiento en colindancia con ambiente donde se fabriquen, empleen o manipulen material explosivo o altamente inflamable o en colindancia con ambientes de uso publico o vias de evacuacion, se encuetran cerrados completamente con muros resistentes al fuego de minimo 2 horas.',
+    '1.9.2	Los elementos de cierre o acabados no presentan caracteristicas de riesgo inflamable o toxico, como poliuretano expandido, espuma plastica, plasticos, cauchos cartones, y similar.',
+    '3.3.11	Si el establecimiento cuenta con tanque estacionario de  Gas Licuado de Petróleo (GLP) en cantidades superiores a 0.45m3 (118.18gl) y/o liquido combustible y sus derivados en cantidades a partir de 1m3 (264.17gl), llamado Consumidor Directo, debe tener constancia de registro de hidrocarburos emitido por OSINERGMIN.',
+    '3.3.12	En caso de tener caldero: Mostrar el libro del servicio del caldero visado por el Ministerio de Trabajo, el mismo que debe estar actualizado a  la fecha.El nivel del agua del caldero debe encontrarse dentro del rango de mínimo y máximo. La presión de trabajo debe ser menor a la presión indicada por el fabricante. El caldero debe contar con valvula de seguridad, presostato y manómetro.Para el caso del caldero que se encuentre en una ruta de evacuación debe estar cercado con muros de resistencia al fuego. De utilizar combustible GLP o GN no se permite su instalación en sótano.',
+    '3.3.13	El caldero se encuentra en buen estado de conservación y mantenimiento.',
+    '3.3.14	El caldero se encuentra operado por un personal calificado que cuenta con constancia de capacitación actualizada emitido por profesional o empresa especializada.',
+    '3.3.15	Para edificaciones con giro de explosivos, artefactos pirotécnicos y otros afines: Cuenta con sistemas a prueba de explosión, si corresponde.',
+    'S/N	Otras observaciones',
+  ],
+  'C. RIESGO DE COLAPSO': [
+    '2.1.1	La cimentación o parte de ella no se encuentra expuesta, inestable en peligro de colapso como consecuencia de filtraciones de agua, erosión, socavamiento, otros.',
+    '2.2.1	Las estructuras de concreto no presentan i) fisuras, grietas, rajaduras, deflexiones, pandeos, muros inclinados, varillas de acero expuestas a la intemperie sin recubrimiento en: columnas, vigas, losas de techos, etc., ii) deterioro por humedad producido por: filtraciones, de tanques y cisternas de almacenamiento de agua, de líquidos, tuberías rotas, lluvias, etc., otras fallas estructurales.',
+    '2.2.2	Las estructuras de la edificación (losas y vigas de techos, azoteas o losas en niveles intermedios), no presentan fisuras, grietas, rajaduras, pandeos, deflexiones, humedad, otros; como consecuencia de sobrecargas existentes producidas por: tanque elevado, equipos, antenas, panel publicitario, otros.',
+    '2.2.3	Los muros de contención en sótanos, en cercos y otros, no presentan fisuras, grietas, rajaduras, deflexiones, pandeos, inclinaciones, varillas de acero expuestas a la intemperie sin recubrimiento, deterioro por humedad producido por filtraciones de tanques y cisternas de almacenamiento de agua, de líquidos, tuberías rotas, lluvias, etc. y otros.',
+    '2.3.1	La edificación de albañilería cuenta con elementos de concreto armado de confinamiento, amarre y/o arriostramiento tales como: cimientos, columnas, vigas, losas.',
+    '2.3.2	Los muros de albañilería no presentan daños: humedad, rajaduras, grietas, inclinaciones, otros.',
+    '2.4.1	Los muros de adobe no presentan fallas ni daños ocasionados por el deterioro y/o humedad (fisuras, grietas, inclinaciones). No es utilizado como muro de contención de suelos, materiales u otros que hagan que pierda su estabilidad. Sobre los muros de adobe no existen construcciones de albañilería o concreto. Los muros de adobe están protegidos de la lluvia en zonas lluviosas.',
+    '2.5.1	Las estructuras de madera, bambú, no presentan rajaduras, deflexiones, pandeos, deterioro por apolillamiento, humedad, otros.',
+    '2.5.2	Las estructuras (postes, columnas, vigas, viguetas, techos entablados, tijerales o cerchas, etc.), no presentan rajaduras, pandeos, deflexiones, como consecuencia de sobrecargas existentes producidas por: tanque elevado, equipos, antenas, panel publicitario, o como consecuencia de otros usos que impliquen cargas mayores a la que puede soportar la estructura.',
+    '2.5.3	La estructura de madera se encuentra alejada o aislada de fuentes de calor que podrían dañarla, o en caso de encontrarse próxima a fuentes de calor, se encuentra protegida con material incombustible y/o tratada con sustancias retardantes o ignifugas.',
+    '2.6.1	Las edificaciones o techos de estructura de acero no presentan deformaciones o pandeos excesivos y visibles que perjudiquen su estabilidad. Los apoyos, uniones y anclajes son seguros (tienen pernos y soldaduras en buen estado de conservación).',
+    '2.6.2	No presentan deterioro por oxido y/o corrosión y se encuentra protegida contra este.',
+    'S/N	Otras observaciones',
+  ],
+  'D. OTROS RIESGOS': [
+    '3.1.9	"La carcaza y motor del ascensor, montacargas, escaleras mecánicas y de equipos de elevación eléctrica, deben estar conectados al sistema de puesta a tierra.',
+    '3.1.10	"El ascensor, montacargas, escaleras mecanicas y equipos de elevacion electrica, cuentan con constancia de operatividad y mantenimiento, firmado por ing. mecánico, electricista o mecánico electricista colegiado y habilitado.',
+    '3.1.13	La subestación esta protegida con cercos, tabiques o paredes para limitar el acceso de personas no autorizadas. La estructura metálica esta conectada al sistema de puesta a tierra.',
+    '3.1.15	"Las máquinas tragamonedas no presentan superficies energizadas y están conectadas al sistema de puesta a tierra.',
+    '3.1.16	"Los equipos electromecánicos de gimnasios deben estar conectados al sistema de puesta a tierra.',
+    '3.2.1	Las rampas tienen una pendiente no mayor al 12% permitiendo la evacuación, tienen pisos antideslizantes y tienen barandas.',
+    '3.2.2	Las aberturas al exterior ubicadas a una altura mayor a 1.00 m sobre el suelo, en tragaluces, escaleras y azotea cuentan con protección al vacío de altura mínima de 1.00m, para evitar  caídas al vacío.',
+    'S/N	Otras observaciones',
+  ],
+};
+
+/// Mapa principal que contiene todos los conjuntos de grupos de descripción.
+const Map<String, Map<String, List<String>>> kAllDescriptionGroupSets = {
+  'Instituciones educativas': kInstitucionesEducativasGroups,
+  'Anexo7a': kAnexo7aGroups,
 };

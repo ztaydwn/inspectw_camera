@@ -167,7 +167,42 @@ class _CameraScreenState extends State<CameraScreen> {
     if (widget.preselectedSubgroup != null) {
       selectedSubgroup = widget.preselectedSubgroup;
     } else {
-      // 1. Mostrar lista de grupos principales
+      // 1. Mostrar lista de conjuntos de grupos (ej: Instituciones, Anexo7a)
+      final selectedSetKey = await showModalBottomSheet<String?>(
+        context: context,
+        builder: (ctx) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Selecciona un tipo de checklist:',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: kAllDescriptionGroupSets.keys.map((setKey) {
+                    return ListTile(
+                      title: Text(setKey),
+                      onTap: () => Navigator.pop(ctx, setKey),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (selectedSetKey == null || !mounted) return null;
+      final selectedGroupSet = kAllDescriptionGroupSets[selectedSetKey]!;
+
+      // 2. Mostrar lista de grupos principales del conjunto seleccionado
       final selectedGroup = await showModalBottomSheet<String?>(
         context: context,
         builder: (ctx) => Container(
@@ -186,7 +221,7 @@ class _CameraScreenState extends State<CameraScreen> {
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
-                  children: kDescriptionGroups.keys.map((group) {
+                  children: selectedGroupSet.keys.map((group) {
                     return ListTile(
                       title: Text(group),
                       onTap: () => Navigator.pop(ctx, group),
@@ -201,12 +236,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
       if (selectedGroup == null || !mounted) return null;
 
-      // 2. Obtener los subgrupos del grupo seleccionado
-      final subgroups = kDescriptionGroups[selectedGroup] ?? [];
+      // 3. Obtener los subgrupos del grupo seleccionado
+      final subgroups = selectedGroupSet[selectedGroup] ?? [];
       if (subgroups.isEmpty) {
         selectedSubgroup = selectedGroup;
       } else {
-        // 3. Mostrar lista de subgrupos
+        // 4. Mostrar lista de subgrupos
         final sub = await showModalBottomSheet<String?>(
           context: context,
           isScrollControlled: true,
@@ -268,7 +303,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     if (selectedSubgroup == null) return null;
 
-    // 4. Usar DescriptionInput para agregar información adicional
+    // 5. Usar DescriptionInput para agregar información adicional
     final additionalText = await showModalBottomSheet<String?>(
       context: context,
       isScrollControlled: true,
@@ -355,7 +390,7 @@ class _CameraScreenState extends State<CameraScreen> {
       ),
     );
 
-    // 5. Construir la descripción final
+    // 6. Construir la descripción final
     if (additionalText == null) return null;
 
     if (additionalText.isEmpty) {
@@ -439,7 +474,8 @@ class _CameraScreenState extends State<CameraScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: Text(
                 _shortPresetName(preset),
-                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold),
               ),
             ),
           ),

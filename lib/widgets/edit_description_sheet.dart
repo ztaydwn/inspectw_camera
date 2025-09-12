@@ -11,7 +11,9 @@ class EditDescriptionSheet extends StatefulWidget {
 }
 
 class _EditDescriptionSheetState extends State<EditDescriptionSheet> {
+  String? _selectedSet;
   String? _selectedGroup;
+  Map<String, List<String>> _groupsForSet = {};
   String? _selectedDescription;
   List<String> _descriptionsForGroup = [];
   late TextEditingController _detailsController;
@@ -35,35 +37,49 @@ class _EditDescriptionSheetState extends State<EditDescriptionSheet> {
   }
 
   void _findInitialValues() {
-    for (var groupEntry in kDescriptionGroups.entries) {
-      for (var preset in groupEntry.value) {
-        if (widget.initial.startsWith(preset)) {
-          setState(() {
-            _selectedGroup = groupEntry.key;
-            _descriptionsForGroup = groupEntry.value;
-            _selectedDescription = preset;
+    // Iterate through all sets and all groups to find the matching preset
+    for (var setEntry in kAllDescriptionGroupSets.entries) {
+      final setName = setEntry.key;
+      final groupSet = setEntry.value;
+      for (var groupEntry in groupSet.entries) {
+        final groupName = groupEntry.key;
+        final descriptions = groupEntry.value;
+        for (var preset in descriptions) {
+          if (widget.initial.startsWith(preset)) {
+            setState(() {
+              _selectedSet = setName;
+              _groupsForSet = groupSet;
+              _selectedGroup = groupName;
+              _descriptionsForGroup = descriptions;
+              _selectedDescription = preset;
 
-            String detail = widget.initial.substring(preset.length).trim();
-            // Handle multiple separators for backward compatibility
-            if (detail.startsWith(':') ||
-                detail.startsWith('-') ||
-                detail.startsWith('+')) {
-              detail = detail.substring(1).trim();
-            }
-            _detailsController.text = detail;
-          });
-          return; // Found a match, exit
+              String detail = widget.initial.substring(preset.length).trim();
+              // Handle multiple separators for backward compatibility
+              if (detail.startsWith(':') ||
+                  detail.startsWith('-') ||
+                  detail.startsWith('+')) {
+                detail = detail.substring(1).trim();
+              }
+              _detailsController.text = detail;
+            });
+            return; // Found a match, exit
+          }
         }
       }
     }
 
     // If no preset was matched, assume the whole thing is a custom description.
+    // Initialize with the first available set/group/description.
     setState(() {
-      if (kDescriptionGroups.isNotEmpty) {
-        _selectedGroup = kDescriptionGroups.keys.first;
-        _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
-        if (_descriptionsForGroup.isNotEmpty) {
-          _selectedDescription = _descriptionsForGroup.first;
+      if (kAllDescriptionGroupSets.isNotEmpty) {
+        _selectedSet = kAllDescriptionGroupSets.keys.first;
+        _groupsForSet = kAllDescriptionGroupSets[_selectedSet]!;
+        if (_groupsForSet.isNotEmpty) {
+          _selectedGroup = _groupsForSet.keys.first;
+          _descriptionsForGroup = _groupsForSet[_selectedGroup]!;
+          if (_descriptionsForGroup.isNotEmpty) {
+            _selectedDescription = _descriptionsForGroup.first;
+          }
         }
       }
       _detailsController.text = widget.initial;
@@ -108,28 +124,55 @@ class _EditDescriptionSheetState extends State<EditDescriptionSheet> {
             children: [
               Text('Editar descripción',
                   style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+
+              // Checklist Set Dropdown
+              DropdownButtonFormField<String>(
+                initialValue: _selectedSet,
+                decoration: const InputDecoration(
+                    labelText: 'Checklist', border: OutlineInputBorder()),
+                items: kAllDescriptionGroupSets.keys.map((String setName) {
+                  return DropdownMenuItem<String>(
+                    value: setName,
+                    child: Text(setName),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  if (newValue == null) return;
+                  setState(() {
+                    _selectedSet = newValue;
+                    _groupsForSet = kAllDescriptionGroupSets[newValue]!;
+                    _selectedGroup = _groupsForSet.keys.first;
+                    _descriptionsForGroup = _groupsForSet[_selectedGroup]!;
+                    _selectedDescription = _descriptionsForGroup.first;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // Group Dropdown
               DropdownButtonFormField<String>(
                 initialValue: _selectedGroup,
                 decoration: const InputDecoration(
                     labelText: 'Grupo', border: OutlineInputBorder()),
-                items: kDescriptionGroups.keys.map((String group) {
+                items: _groupsForSet.keys.map((String group) {
                   return DropdownMenuItem<String>(
                     value: group,
                     child: Text(group),
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
+                  if (newValue == null) return;
                   setState(() {
-                    _selectedGroup = newValue!;
-                    _descriptionsForGroup = kDescriptionGroups[_selectedGroup]!;
-                    if (!_descriptionsForGroup.contains(_selectedDescription)) {
-                      _selectedDescription = _descriptionsForGroup.first;
-                    }
+                    _selectedGroup = newValue;
+                    _descriptionsForGroup = _groupsForSet[newValue]!;
+                    _selectedDescription = _descriptionsForGroup.first;
                   });
                 },
               ),
               const SizedBox(height: 12),
+
+              // Description Dropdown
               DropdownButtonFormField<String>(
                 initialValue: _selectedDescription,
                 isExpanded: true,
@@ -143,7 +186,7 @@ class _EditDescriptionSheetState extends State<EditDescriptionSheet> {
                 }).toList(),
                 onChanged: (String? newValue) {
                   setState(() {
-                    _selectedDescription = newValue!;
+                    _selectedDescription = newValue;
                   });
                 },
               ),
