@@ -10,6 +10,7 @@ import '../models.dart';
 import 'isolate_helpers.dart';
 import 'photo_metadata.dart';
 import 'storage_service.dart';
+import '../control_documents_template.dart';
 
 class MetadataService with ChangeNotifier {
   final _uuid = const Uuid();
@@ -844,5 +845,84 @@ class MetadataService with ChangeNotifier {
 
     descriptions.writeln('--- FIN DEL REPORTE ---');
     return descriptions.toString();
+  }
+
+  // ==============================
+  // Control de Documentación (nuevo)
+  // ==============================
+
+  Future<ControlDocumentsSheet> getControlDocuments(String project) async {
+    await init();
+    final f = _storage.controlDocumentsFile(project);
+    if (await f.exists()) {
+      final content = await f.readAsString();
+      if (content.isNotEmpty) {
+        final json = await compute(jsonDecode, content) as Map<String, dynamic>;
+        return ControlDocumentsSheet.fromJson(json);
+      }
+    }
+    // Si no existe, crear con plantilla por defecto en memoria
+    final items = <ControlDocumentItem>[];
+    for (int i = 0; i < kControlDocumentsTitles.length; i++) {
+      items.add(ControlDocumentItem(number: i + 1, title: kControlDocumentsTitles[i]));
+    }
+    return ControlDocumentsSheet(items: items);
+  }
+
+  Future<void> saveControlDocuments(String project, ControlDocumentsSheet sheet) async {
+    final f = _storage.controlDocumentsFile(project);
+    await compute(persistMetadataIsolate, {
+      'file': f,
+      'content': sheet.toJson(),
+    });
+    notifyListeners();
+  }
+
+  Future<String> generateControlDocumentsReport(String project) async {
+    final sheet = await getControlDocuments(project);
+    final buffer = StringBuffer();
+    buffer.writeln('CONTROL DE DOCUMENTACIÓN DE SEGURIDAD');
+    buffer.writeln('Proyecto: $project');
+    buffer.writeln(
+        'Fecha: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}');
+    buffer.writeln('---');
+
+    for (final item in sheet.items) {
+      buffer.writeln('${item.number}. ${item.title}');
+      if (item.status == ControlDocStatus.observado) {
+        final obs = item.observation.trim().isEmpty
+            ? '(sin detalle)'
+            : item.observation.trim();
+        buffer.writeln('SITUACIÓN: OBSERVADO');
+        buffer.writeln('Detalle: $obs');
+      } else {
+        buffer.writeln('SITUACIÓN: NO APLICA');
+      }
+      buffer.writeln('');
+    }
+    return buffer.toString();
+  }
+
+  Future<String?> exportControlDocumentsFile(String project) async {
+    final report = await generateControlDocumentsReport(project);
+    return await _storage.exportReportToDownloads(
+      project: project,
+      reportContent: report,
+      customFileName: 'control_documents.txt',
+    );
+  }
+
+  /// Devuelve el JSON crudo de control_documents para incluir en ZIP.
+  Future<String> getRawControlDocumentsJson(String project) async {
+    final f = _storage.controlDocumentsFile(project);
+    if (await f.exists()) {
+      try {
+        final content = await f.readAsString();
+        if (content.isNotEmpty) return content;
+      } catch (_) {}
+    }
+    // Si no existe, generar JSON desde la plantilla por defecto
+    final defaultSheet = await getControlDocuments(project);
+    return jsonEncode(defaultSheet.toJson());
   }
 }

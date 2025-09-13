@@ -76,6 +76,9 @@ class StorageService {
   File projectDataFile(String project) =>
       File('${_appDir.path}/projects/$project/project_data.json');
 
+  File controlDocumentsFile(String project) =>
+      File('${_appDir.path}/projects/$project/control_documents.json');
+
   Future<Directory> ensureChecklistDir(String project) async {
     final d =
         Directory(p.join(_appDir.path, 'projects', project, 'checklists'));

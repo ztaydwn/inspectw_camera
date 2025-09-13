@@ -187,18 +187,23 @@ class CreateZipParams {
   final String rawDescriptionsJson;
   final String rawLocationStatusJson;
   final String rawProjectDataJson;
+  // Control documents (nuevo): reporte TXT y JSON crudo
+  final String controlDocumentsReport;
+  final String rawControlDocumentsJson;
 
   CreateZipParams(
       {required this.photos,
       required this.project,
       this.location,
       required this.descriptions,
-      required this.projectDataReport, // Added
+      required this.projectDataReport,
       required this.resolvedPaths,
       required this.rawMetadataJson,
       required this.rawDescriptionsJson,
       required this.rawLocationStatusJson,
-      required this.rawProjectDataJson});
+      required this.rawProjectDataJson,
+      required this.controlDocumentsReport,
+      required this.rawControlDocumentsJson});
 }
 
 /// ISOLATE: Creates a zip file from photos.
@@ -230,6 +235,11 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   encoder.addArchiveFile(ArchiveFile(
       'infoproyect.txt', projectDataBytes.length, projectDataBytes));
 
+  // Add control_documents.txt
+  final controlDocBytes = utf8.encode(params.controlDocumentsReport);
+  encoder.addArchiveFile(ArchiveFile(
+      'control_documents.txt', controlDocBytes.length, controlDocBytes));
+
   // Add raw JSON data files under data/
   final metaJson = utf8.encode(params.rawMetadataJson);
   encoder.addArchiveFile(
@@ -244,6 +254,11 @@ Future<String?> createZipIsolate(CreateZipParams params) async {
   encoder.addArchiveFile(ArchiveFile(
       'data/project_data.json', projectDataJson.length, projectDataJson));
 
+  // Add control_documents.json under data/
+  final controlDocsJson = utf8.encode(params.rawControlDocumentsJson);
+  encoder.addArchiveFile(ArchiveFile('data/control_documents.json',
+      controlDocsJson.length, controlDocsJson));
+
   encoder.close();
   return zipPath;
 }
@@ -257,7 +272,8 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
   final CreateZipParams params = args['params'] as CreateZipParams;
 
   try {
-    final total = params.photos.length + 6; // photos + descriptions + infoproyect + 4 JSONs
+    // photos + descriptions + infoproyect + control_documents + 5 JSONs
+    final total = params.photos.length + 8;
     final proj = sanitizeFileName(params.project);
     final locPart = params.location != null ? '_${sanitizeFileName(params.location!)}' : '';
     final zipName = '$proj${locPart}_${DateTime.now().millisecondsSinceEpoch}.zip';
@@ -336,6 +352,26 @@ void createZipWithProgressIsolate(Map<String, dynamic> args) async {
     sendPort.send({
       'type': 'progress',
       'current': params.photos.length + 6,
+      'total': total
+    });
+
+    // Add control_documents.txt (after infoproyect).
+    final controlDocBytes = utf8.encode(params.controlDocumentsReport);
+    encoder.addArchiveFile(ArchiveFile(
+        'control_documents.txt', controlDocBytes.length, controlDocBytes));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 7,
+      'total': total
+    });
+
+    // Add control_documents.json
+    final controlDocsJson = utf8.encode(params.rawControlDocumentsJson);
+    encoder.addArchiveFile(ArchiveFile('data/control_documents.json',
+        controlDocsJson.length, controlDocsJson));
+    sendPort.send({
+      'type': 'progress',
+      'current': params.photos.length + 8,
       'total': total
     });
 

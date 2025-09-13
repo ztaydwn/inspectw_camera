@@ -217,3 +217,55 @@ class ChecklistTemplate {
   final List<ChecklistItemTemplate> items;
   const ChecklistTemplate({required this.name, required this.items});
 }
+
+// =====================
+// Control de Documentación
+// =====================
+
+enum ControlDocStatus { observado, noAplica }
+
+class ControlDocumentItem {
+  final int number; // 1..N
+  final String title; // Texto del requisito/certificado
+  ControlDocStatus status;
+  String observation; // Detalle cuando está observado
+
+  ControlDocumentItem({
+    required this.number,
+    required this.title,
+    this.status = ControlDocStatus.noAplica,
+    this.observation = '',
+  });
+
+  factory ControlDocumentItem.fromJson(Map<String, dynamic> json) {
+    return ControlDocumentItem(
+      number: json['number'] ?? 0,
+      title: json['title'] ?? '',
+      status: ControlDocStatus.values[(json['status'] ?? 1).clamp(0, ControlDocStatus.values.length - 1)],
+      observation: json['observation'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'number': number,
+        'title': title,
+        'status': status.index,
+        'observation': observation,
+      };
+}
+
+class ControlDocumentsSheet {
+  final List<ControlDocumentItem> items;
+  ControlDocumentsSheet({required this.items});
+
+  factory ControlDocumentsSheet.fromJson(Map<String, dynamic> json) {
+    final list = (json['items'] as List? ?? [])
+        .map((e) => ControlDocumentItem.fromJson(e))
+        .toList();
+    return ControlDocumentsSheet(items: list);
+  }
+
+  Map<String, dynamic> toJson() => {
+        'items': items.map((e) => e.toJson()).toList(),
+      };
+}

@@ -25,6 +25,7 @@ import '../constants.dart';
 import 'location_checklist_screen.dart';
 import 'search_explorer_screen.dart';
 import 'project_data_screen.dart';
+import 'control_documents_screen.dart';
 import '../checklist_templates.dart';
 import 'checklist_screen.dart';
 import 'import_review_screen.dart';
@@ -368,12 +369,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
           await meta.generatePhotoDescriptionsReport(widget.project);
       final projectDataReport =
           await meta.generateProjectDataReport(widget.project);
+      final controlDocsReport =
+          await meta.generateControlDocumentsReport(widget.project);
 
       // Load raw JSON files to include in ZIP
       String rawMetadataJson = '[]';
       String rawDescriptionsJson = '{}';
       String rawLocationStatusJson = '[]';
       String rawProjectDataJson = '{}';
+      String rawControlDocsJson = '{}';
       try {
         final mf = storage.metadataFile(widget.project);
         if (await mf.exists()) rawMetadataJson = await mf.readAsString();
@@ -389,6 +393,10 @@ class _ProjectScreenState extends State<ProjectScreen> {
       try {
         final pf = storage.projectDataFile(widget.project);
         if (await pf.exists()) rawProjectDataJson = await pf.readAsString();
+      } catch (_) {}
+      try {
+        rawControlDocsJson =
+            await meta.getRawControlDocumentsJson(widget.project);
       } catch (_) {}
 
       if (Platform.isAndroid) {
@@ -414,15 +422,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
         project: widget.project,
         descriptions: descriptions,
         projectDataReport: projectDataReport,
+        controlDocumentsReport: controlDocsReport,
         resolvedPaths: resolvedPaths,
         rawMetadataJson: rawMetadataJson,
         rawDescriptionsJson: rawDescriptionsJson,
         rawLocationStatusJson: rawLocationStatusJson,
         rawProjectDataJson: rawProjectDataJson,
+        rawControlDocumentsJson: rawControlDocsJson,
       );
       // Initialize progress
       setState(() {
-        _zipTotal = photosWithPaths.length + 6;
+        _zipTotal = photosWithPaths.length + 8;
         _zipCurrent = 0;
         _zipProgress = 0.0;
       });
@@ -672,12 +682,15 @@ class _ProjectScreenState extends State<ProjectScreen> {
       // For now, we'll include the full project reports in each location zip.
       final descriptions = await meta.generatePhotoDescriptionsReport(project);
       final projectDataReport = await meta.generateProjectDataReport(project);
+      final controlDocsReport =
+          await meta.generateControlDocumentsReport(project);
 
       // Load raw JSON files to include in ZIP
       String rawMetadataJson = '[]';
       String rawDescriptionsJson = '{}';
       String rawLocationStatusJson = '[]';
       String rawProjectDataJson = '{}';
+      String rawControlDocsJson = '{}';
       try {
         final mf = storage.metadataFile(project);
         if (await mf.exists()) rawMetadataJson = await mf.readAsString();
@@ -694,6 +707,9 @@ class _ProjectScreenState extends State<ProjectScreen> {
         final pf = storage.projectDataFile(project);
         if (await pf.exists()) rawProjectDataJson = await pf.readAsString();
       } catch (_) {}
+      try {
+        rawControlDocsJson = await meta.getRawControlDocumentsJson(project);
+      } catch (_) {}
 
       final params = CreateZipParams(
         photos: photosWithPaths,
@@ -702,11 +718,13 @@ class _ProjectScreenState extends State<ProjectScreen> {
         location: locationName,
         descriptions: descriptions,
         projectDataReport: projectDataReport,
+        controlDocumentsReport: controlDocsReport,
         resolvedPaths: resolvedPaths,
         rawMetadataJson: rawMetadataJson,
         rawDescriptionsJson: rawDescriptionsJson,
         rawLocationStatusJson: rawLocationStatusJson,
         rawProjectDataJson: rawProjectDataJson,
+        rawControlDocumentsJson: rawControlDocsJson,
       );
 
       final recv = ReceivePort();
@@ -990,7 +1008,36 @@ class _ProjectScreenState extends State<ProjectScreen> {
           // Agrupamos acciones en un PopupMenuButton para limpiar la AppBar
           PopupMenuButton<String>(
             onSelected: (value) async {
-              switch (value) {
+            switch (value) {
+                case 'control_documents':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ControlDocumentsScreen(project: widget.project),
+                    ),
+                  );
+                  break;
+                case 'export_control_documents':
+                  try {
+                    final path =
+                        await meta.exportControlDocumentsFile(widget.project);
+                    if (path != null && context.mounted) {
+                      await _handleExportedFileSafe(
+                          path, 'Control de Documentos');
+                    } else if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No se pudo exportar.')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
+                    }
+                  }
+                  break;
                 case 'location_checklist':
                   Navigator.push(
                     context,
@@ -1095,10 +1142,25 @@ class _ProjectScreenState extends State<ProjectScreen> {
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
               const PopupMenuItem<String>(
+                value: 'control_documents',
+                child: ListTile(
+                  leading: Icon(Icons.fact_check_outlined),
+                  title: Text('Control de documentación (seguridad)'),
+                ),
+              ),
+              const PopupMenuItem<String>(
                 value: 'location_checklist',
                 child: ListTile(
                   leading: Icon(Icons.playlist_add_check),
                   title: Text('Checklist de Ubicaciones'),
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'export_control_documents',
+                child: ListTile(
+                  leading: Icon(Icons.description_outlined),
+                  title: Text('Exportar control_documents.txt'),
                 ),
               ),
               const PopupMenuDivider(),
