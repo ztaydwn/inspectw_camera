@@ -140,7 +140,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
       );
 
       if (savedPath != null && mounted) {
-        await _handleExportedFile(savedPath, 'Reporte de Proyecto');
+        await _handleExportedFileSafe(savedPath, 'Reporte de Proyecto');
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('No se pudo generar el reporte.')));
@@ -760,24 +760,31 @@ class _ProjectScreenState extends State<ProjectScreen> {
     if (zipPath == null) return;
 
     if (mounted) {
-      await _handleExportedFile(zipPath, 'Archivo ZIP del Proyecto');
+      await _handleExportedFileSafe(zipPath, 'Archivo ZIP del Proyecto');
     }
   }
 
-  /// Muestra un diálogo para que el usuario decida si comparte o guarda el archivo.
-  Future<void> _handleExportedFile(String path, String fileType) async {
+  // Nueva versión robusta del manejador compartir/guardar
+  Future<void> _handleExportedFileSafe(String path, String fileType) async {
     final messenger = ScaffoldMessenger.of(context);
+    final tempRoot = Directory.systemTemp.path;
+    final bool isTempFile =
+        p.isWithin(tempRoot, path) || p.equals(tempRoot, p.dirname(path));
+    final bool isProbablyInDownloads =
+        Platform.isAndroid && path.contains('/Download/');
+
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('$fileType generado'),
         content: const Text('¿Qué deseas hacer con el archivo?'),
         actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.save_alt),
-            label: const Text('Guardar en Descargas'),
-            onPressed: () => Navigator.pop(context, 'save'),
-          ),
+          if (isTempFile && !isProbablyInDownloads)
+            TextButton.icon(
+              icon: const Icon(Icons.save_alt),
+              label: const Text('Guardar en Descargas'),
+              onPressed: () => Navigator.pop(context, 'save'),
+            ),
           FilledButton.icon(
             icon: const Icon(Icons.share),
             label: const Text('Compartir'),
@@ -799,33 +806,39 @@ class _ProjectScreenState extends State<ProjectScreen> {
             .showSnackBar(const SnackBar(content: Text('Archivo compartido.')));
       }
     } else if (choice == 'save') {
-      try {
-        await MediaStore.ensureInitialized();
-        MediaStore.appFolder = kAppFolder;
-        await MediaStore().saveFile(
-          tempFilePath: path,
-          dirType: DirType.download,
-          dirName: DirName.download,
-          relativePath: p.posix.join(kAppFolder, sanitizeDir(widget.project)),
-        );
+      if (isTempFile && !isProbablyInDownloads) {
+        try {
+          await MediaStore.ensureInitialized();
+          MediaStore.appFolder = kAppFolder;
+          await MediaStore().saveFile(
+            tempFilePath: path,
+            dirType: DirType.download,
+            dirName: DirName.download,
+            relativePath: p.posix.join(kAppFolder, sanitizeDir(widget.project)),
+          );
+          messenger.showSnackBar(const SnackBar(
+              content: Text('Archivo guardado en Descargas/$kAppFolder')));
+        } catch (e) {
+          debugPrint('[SAVE] Error saving to MediaStore: $e');
+          messenger
+              .showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+        }
+      } else {
         messenger.showSnackBar(const SnackBar(
-            content: Text('Archivo guardado en Descargas/$kAppFolder')));
-      } catch (e) {
-        debugPrint('[SAVE] Error saving to MediaStore: $e');
-        messenger.showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+            content: Text('El archivo ya está guardado en Descargas.')));
       }
     }
 
-    // Limpiar el archivo temporal después de la acción (compartir o guardar)
-    // MediaStore lo mueve, pero Share lo copia, así que es bueno asegurarse.
-    try {
-      final tempFile = File(path);
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-        debugPrint('[CLEANUP] Deleted temp file: $path');
+    if (isTempFile && !isProbablyInDownloads) {
+      try {
+        final f = File(path);
+        if (await f.exists()) {
+          await f.delete();
+          debugPrint('[CLEANUP] Deleted temp file: $path');
+        }
+      } catch (e) {
+        debugPrint('[CLEANUP] Failed to delete temp file: $e');
       }
-    } catch (e) {
-      debugPrint('[CLEANUP] Failed to delete temp file: $e');
     }
   }
 
@@ -1015,7 +1028,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   try {
                     final path = await meta.exportMetadataFile(widget.project);
                     if (path != null && context.mounted) {
-                      await _handleExportedFile(path, 'Backup de Metadatos');
+                      await _handleExportedFileSafe(
+                          path, 'Backup de Metadatos');
                     } else if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                           content: Text('No se pudo exportar.')));
@@ -1033,7 +1047,7 @@ class _ProjectScreenState extends State<ProjectScreen> {
                     final path =
                         await meta.exportDescriptionsFile(widget.project);
                     if (path != null && context.mounted) {
-                      await _handleExportedFile(
+                      await _handleExportedFileSafe(
                           path, 'Backup de Descripciones');
                     } else if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -1061,7 +1075,8 @@ class _ProjectScreenState extends State<ProjectScreen> {
                           '${widget.project}_descriptions_report_completo.txt',
                     );
                     if (savedPath != null && context.mounted) {
-                      await _handleExportedFile(savedPath, 'Reporte Completo');
+                      await _handleExportedFileSafe(
+                          savedPath, 'Reporte Completo');
                     }
                   } catch (e) {
                     debugPrint('Error al forzar reporte: $e');
